@@ -105,6 +105,9 @@ async def handle_cm_message(
         # directly to the response
         response += token
 
+    # Post process the message content by removing ### Server Name: ... from the beginning if it exsits using regex
+    response = re.sub(r"^.*Server Name:\s*", "", response).strip()
+
     # Check if the response is longer than 2000 characters
     if len(response) > 2000:
         main_content = response[:1500]
