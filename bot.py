@@ -38,8 +38,16 @@ async def on_ready() -> None:
 
 @client.event
 async def on_message(message: DiscordMessage) -> None:
-    if not client.user.mentioned_in(message):
+    # Check if the message is a reply to one of the bot's messages
+    reply = False
+    if message.reference and message.reference.resolved:
+        if message.reference.resolved.author == client.user:
+            reply = True
+
+    # Check if the bot was mentioned
+    if not reply and not client.user.mentioned_in(message):
         return
+
     res = await message.channel.send("Monkey Thinking...")
     # Start the message handler task in the background
     try:

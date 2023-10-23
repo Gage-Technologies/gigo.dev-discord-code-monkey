@@ -16,9 +16,11 @@ async def handle_cm_message(
     message: DiscordMessage,
     partialMessage: DiscordMessage,
 ) -> None:
+    # Check if the message was sent by the bot
     if message.author == bot_user:
         return
-    
+
+    # prep the message content
     content = re.sub(r"<@\d+>", " ", message.content)
 
     # create a new chat if the message is clear
@@ -35,6 +37,11 @@ async def handle_cm_message(
         )
         await partialMessage.edit(content="Monkey forgot!")
         return
+
+    # prepend the username
+    content = (
+        f"### Server Name: {message.author.display_name}\n\n{message.content}"
+    )
 
     # Retrieve the last chat for this channel from the database
     chat = db.get_last_channel_chat(message.author.id, message.channel.id)
@@ -98,7 +105,6 @@ async def handle_cm_message(
         # directly to the response
         response += token
 
-
     # Check if the response is longer than 2000 characters
     if len(response) > 2000:
         main_content = response[:1500]
@@ -108,8 +114,10 @@ async def handle_cm_message(
         if paste_url:
             response = main_content + f"\n... [Read more]({paste_url})"
         else:
-            response = main_content + "\n... [Content too long, cannot display the rest.]"
-
+            response = (
+                main_content
+                + "\n... [Content too long, cannot display the rest.]"
+            )
 
     # Save the response to the database
     db.add_message(
@@ -137,12 +145,13 @@ def upload_to_pastebin(content: str) -> str:
         "api_dev_key": os.environ.get("PASTEBIN_API_KEY"),
         "api_option": "paste",
         "api_paste_code": content,
-
     }
     response = requests.post(PASTEBIN_API_URL, data=payload)
-    
+
     if response.status_code == 200:
         return response.text
     else:
-        print(f"Failed to upload to Pastebin. Status Code: {response.status_code}, Response: {response.text}")
+        print(
+            f"Failed to upload to Pastebin. Status Code: {response.status_code}, Response: {response.text}"
+        )
         return None
