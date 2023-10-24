@@ -6,3 +6,6 @@ pydantic<2.0
 pymongo
 tiktoken
 requests
+text-generation
+tokenizers
+transformers

@@ -7,7 +7,7 @@ import openai
 
 from code_monkey import handle_cm_message
 from database import Database
-from llm import LLM
+from llms.dolphin import LLM
 
 # Load the environment variables from the .env file
 load_dotenv()

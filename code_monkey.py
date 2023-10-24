@@ -6,7 +6,10 @@ from datetime import datetime
 import requests
 from discord import ClientUser, Message as DiscordMessage
 from database import Database, Chat, Message
-from llm import LLM
+from llms.dolphin import LLM
+
+
+RATE_LIMIT = int(os.environ.get("RATE_LIMIT"))
 
 
 async def handle_cm_message(
@@ -28,7 +31,7 @@ async def handle_cm_message(
         db.create_chat(
             Chat(
                 id=int(time.time() * 1000),
-                author_id=message.author.id,
+                author_id=0,
                 channel_id=message.channel.id,
                 messages=[],
                 created_at=datetime.now(),
@@ -44,7 +47,7 @@ async def handle_cm_message(
     )
 
     # Retrieve the last chat for this channel from the database
-    chat = db.get_last_channel_chat(message.author.id, message.channel.id)
+    chat = db.get_last_channel_chat(0, message.channel.id)
 
     # If there is not chat then we need to create one
     new_chat = False
@@ -52,21 +55,22 @@ async def handle_cm_message(
         new_chat = True
         chat = Chat(
             id=int(time.time() * 1000),
-            author_id=message.author.id,
+            author_id=0,
             channel_id=message.channel.id,
             messages=[],
             created_at=datetime.now(),
             first_message_id=0,
         )
 
-    # reject if we have more than 5 messages in 2 minutes
-    msg_count = db.get_message_count_by_time(chat.id, 2 * 60)
+    # reject if we have more than RATE_LIMIT messages in 2 minutes
+    if RATE_LIMIT > 0:
+        msg_count = db.get_message_count_by_time(chat.id, 2 * 60)
 
-    if msg_count > 5:
-        await partialMessage.edit(
-            content="Monkey can't think that fast! Wait 2m before trying again..."
-        )
-        return
+        if msg_count > RATE_LIMIT:
+            await partialMessage.edit(
+                content="Monkey can't think that fast! Wait 2m before trying again..."
+            )
+            return
 
     # Create a new message object
     new_message = Message(
@@ -106,7 +110,7 @@ async def handle_cm_message(
         response += token
 
     # Post process the message content by removing ### Server Name: ... from the beginning if it exsits using regex
-    response = re.sub(r"^.*Server Name:\s*", "", response).strip()
+    response = post_process_response(response)
 
     # Check if the response is longer than 2000 characters
     if len(response) > 2000:
@@ -158,3 +162,18 @@ def upload_to_pastebin(content: str) -> str:
             f"Failed to upload to Pastebin. Status Code: {response.status_code}, Response: {response.text}"
         )
         return None
+
+
+def post_process_response(response: str) -> str:
+    """
+    Clean the output of the llm
+    """
+    response = re.sub(r"^.*Server Name:\s*", "", response).strip()
+    response = response.replace("<|im_end|>").replace("<im_start>").strip()
+    response = (
+        response.replace("<|assistant|>")
+        .replace("<|user|>")
+        .replace("<|system|>")
+        .strip()
+    )
+    return response
