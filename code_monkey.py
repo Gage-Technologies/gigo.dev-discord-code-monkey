@@ -169,11 +169,11 @@ def post_process_response(response: str) -> str:
     Clean the output of the llm
     """
     response = re.sub(r"^.*Server Name:\s*", "", response).strip()
-    response = response.replace("<|im_end|>").replace("<im_start>").strip()
+    response = response.replace("<|im_end|>", "").replace("<im_start>", "").strip()
     response = (
-        response.replace("<|assistant|>")
-        .replace("<|user|>")
-        .replace("<|system|>")
+        response.replace("<|assistant|>", "")
+        .replace("<|user|>", "")
+        .replace("<|system|>", "")
         .strip()
     )
     return response
