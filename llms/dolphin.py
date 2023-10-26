@@ -59,11 +59,11 @@ class LLM:
         # chronological order
         chat_messages.reverse()
 
-        prompt = f"<|im_start|>system\n{SYSTEM_MESSAGE}<|im_end|>"
+        prompt = f"<|im_start|>system\n{SYSTEM_MESSAGE}<|im_end|>\n"
         for msg in chat_messages:
             r = "user" if msg['role'] == "user" else "assistant"
-            prompt += f"<|im_start|>{r}\n{msg['content']}<|im_end|>"
-        prompt += f"\n<|im_start|>assistant\n"
+            prompt += f"<|im_start|>{r}\n{msg['content']}<|im_end|>\n"
+        prompt += "<|im_start|>assistant\n"
 
         return prompt
 
@@ -83,7 +83,7 @@ class LLM:
             top_k=49,
             max_new_tokens=4096 - input_tokens,
             stop_sequences=["</s>", "<|>", "<|im_end|>", "<|im_start|>"],
-            seed=random.randint(0, sys.maxsize),
+            seed=random.randint(0, 100000),
         )
 
         # Iterate over the chat completion to get the response

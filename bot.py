@@ -38,6 +38,10 @@ async def on_ready() -> None:
 
 @client.event
 async def on_message(message: DiscordMessage) -> None:
+    # Check if the message was sent by the bot
+    if message.author == client.user:
+        return
+
     # Check if the message is a reply to one of the bot's messages
     reply = False
     if message.reference and message.reference.resolved:

@@ -9,3 +9,6 @@ requests
 text-generation
 tokenizers
 transformers
+pillow
+webuiapi
+stability-sdk
