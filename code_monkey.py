@@ -46,9 +46,7 @@ async def handle_cm_message(
         return
 
     # prepend the username
-    content = (
-        f"### Server Name: {message.author.display_name}\n\n{content}"
-    )
+    content = f"### Server Name: {message.author.display_name}\n\n{content}"
 
     # Retrieve the last chat for this channel from the database
     chat = db.get_last_channel_chat(0, message.channel.id)
@@ -168,14 +166,26 @@ async def handle_cm_message(
             image_content = get_image_for_prompt(image_prompt, seed)
         except Exception as e:
             print("Error generating image: ", e, flush=True)
-            partialMessage.edit(content=response+"\nMonkey failed to generate image :(")
+            partialMessage.edit(
+                content=response + "\nMonkey failed to generate image :("
+            )
             return
-        
-        if image_prompt and image_prompt == "<|IAC|>":
+
+        if image_content is None:
+            partialMessage.edit(
+                content=response + "\nMonkey failed to generate image :("
+            )
+            return
+
+        if image_content == "<|IAC|>":
             image_prompt = None
             response = "Monkey finds your request inappropriate :("
         else:
-            print("Image Content: ", "empty" if image_content is None else image_content[:10], flush=True)
+            print(
+                "Image Content: ",
+                "empty" if image_content is None else image_content[:10],
+                flush=True,
+            )
             await partialMessage.reply(
                 file=discord.File(
                     BytesIO(base64.b64decode(image_content)),

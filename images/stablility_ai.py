@@ -55,7 +55,7 @@ def get_image_for_prompt(
         for artifact in resp.artifacts:
             if artifact.finish_reason == generation.FILTER:
                 warnings.warn(
-                    f"Your request activated the API's safety filters and could not be processed.\nPrompt: {'thumbnail for a programming article with the title: ' + prompt}"
+                    f"Your request activated the API's safety filters and could not be processed.\nPrompt: {prompt}"
                     "Please modify the prompt and try again."
                 )
                 return "<|IAC|>"
