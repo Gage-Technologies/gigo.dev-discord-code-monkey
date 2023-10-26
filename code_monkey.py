@@ -170,16 +170,20 @@ async def handle_cm_message(
             print("Error generating image: ", e, flush=True)
             partialMessage.edit(content=response+"\nMonkey failed to generate image :(")
             return
-    
-        print("Image Content: ", "empty" if image_content is None else image_content[:10], flush=True)
-        await partialMessage.reply(
-            file=discord.File(
-                BytesIO(base64.b64decode(image_content)),
-                filename=f"GIGO_Code_Monkey_{image_prompt.replace(' ', '_')[:50]}.png",
-                description=image_prompt,
+        
+        if image_prompt and image_prompt == "<|IAC|>":
+            image_prompt = None
+            response = "Monkey finds your request inappropriate :("
+        else:
+            print("Image Content: ", "empty" if image_content is None else image_content[:10], flush=True)
+            await partialMessage.reply(
+                file=discord.File(
+                    BytesIO(base64.b64decode(image_content)),
+                    filename=f"GIGO_Code_Monkey_{image_prompt.replace(' ', '_')[:50]}.png",
+                    description=image_prompt[:1024],
+                )
             )
-        )
-        db.add_image_to_message(res_message.id, image_content, seed)
+            db.add_image_to_message(res_message.id, image_content, seed)
         await partialMessage.edit(content=response)
 
 
