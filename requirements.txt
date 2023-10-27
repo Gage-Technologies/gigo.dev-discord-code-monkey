@@ -12,3 +12,4 @@ transformers
 pillow
 webuiapi
 stability-sdk
+jinja2

@@ -1,5 +1,6 @@
 import base64
 from io import BytesIO
+import json
 import os
 import random
 import sys
@@ -97,6 +98,8 @@ async def handle_cm_message(
         chat.first_message_id = new_message.id
         db.create_chat(chat)
         db.add_message(chat.id, new_message)
+
+    print("chat id: ", chat.id, flush=True)
 
     # retrieve the messages we need to use
     messages = db.get_chat_messages(chat.id)
@@ -233,6 +236,9 @@ def post_process_response(response: str) -> Tuple[str, Optional[str]]:
         .replace("<|system|>", "")
         .strip()
     )
+    response = (
+        response.replace("[INST]", "").replace("[/INST]", "").strip()
+    )
 
     # handle image generation
     prompt = None
@@ -246,5 +252,11 @@ def post_process_response(response: str) -> Tuple[str, Optional[str]]:
             # get the content following the </image> tag
             end += len('</image>')
         response = response[end:].strip()
+    
+    try:
+        func_call = json.loads(response)
+        prompt = func_call["params"]["prompt"]
+    except Exception:
+        pass
 
     return response, prompt

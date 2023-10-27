@@ -1,16 +1,16 @@
+from dotenv import load_dotenv
+# Load the environment variables from the .env file
+load_dotenv()
+
 import os
 import discord
 from discord.ext import commands
 from discord import Message as DiscordMessage
-from dotenv import load_dotenv
 import openai
 
 from code_monkey import handle_cm_message
 from database import Database
 from llms.dolphin import LLM
-
-# Load the environment variables from the .env file
-load_dotenv()
 
 # initialize openai from the env
 openai.api_key = os.environ["OPENAI_API_KEY"]

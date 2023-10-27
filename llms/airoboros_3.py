@@ -1,24 +1,29 @@
-from calendar import prmonth
-import os
-import random
-import sys
-from database import Message
-from const import SYSTEM_MESSAGE
 from transformers import AutoTokenizer
 from text_generation import Client
+from database import Message
+from const import SYSTEM_MESSAGE
+import random
+import os
 from typing import Iterator, List
+
+
+AIROBOROS_FUNC_DEFS = """
+Available functions:
+generate_image:
+  description: Generate images from thorough descriptions using Stable Diffusion XL
+  params:
+    prompt: (string) a detailed and thorough description of the image that will be generated"""
 
 
 class LLM:
     def __init__(self) -> None:
         self.tokenizer = AutoTokenizer.from_pretrained(
-            'mistralai/Mistral-7B-v0.1'
+            'jondurbin/airoboros-m-7b-3.1.2'
         )
-        # have to do it this way because the official repo has a broken added_tokens.json file
-        self.tokenizer.add_tokens(["<|im_end|>", "<|im_start|>"])
+
         self.client = Client(base_url=os.environ.get("TXT_GEN_URL"))
 
-    def preprocess_messages(self, messages: List[Message]) -> str:
+    def preprocess_messages(self, messages: List[Message]) -> List[dict]:
         # Initialize the chat messages with an empty list
         chat_messages = []
 
@@ -61,30 +66,52 @@ class LLM:
         # chronological order
         chat_messages.reverse()
 
-        prompt = f"<|im_start|>system\n{SYSTEM_MESSAGE}<|im_end|>\n"
-        for msg in chat_messages:
-            r = "user" if msg['role'] == "user" else "assistant"
-            prompt += f"<|im_start|>{r}\n{msg['content']}<|im_end|>\n"
-        prompt += "<|im_start|>assistant\n"
+        # Add the system message to the beginning of the chat messages
+        chat_messages.insert(
+            0,
+            {
+                "role": "system",
+                "content": SYSTEM_MESSAGE,
+            },
+        )
 
-        return prompt
+        return chat_messages
 
     def chat_completion(self, messages: List[Message]) -> Iterator[str]:
         # Preprocess the chat messages
         chat_messages = self.preprocess_messages(messages)
 
+        # add the functions to the last user message
+        # chat_messages[-1] += AIROBOROS_FUNC_DEFS
+
+        # format the input for the model's chat template
+        content = self.tokenizer.apply_chat_template(chat_messages, tokenize=False)
+
         # get input token count
-        input_tokens = len(self.tokenizer.encode(chat_messages))
+        input_tokens = len(self.tokenizer.encode(content))
+
+        print(
+            "--------------------------------------------------------------------------------",
+            flush=True
+        )
+        print(
+            content,
+            flush=True
+        )
+        print(
+            "--------------------------------------------------------------------------------",
+            flush=True
+        )
 
         # Create a new chat completion to stream the response from the model
         completion = self.client.generate_stream(
-            prompt=chat_messages,
+            prompt=content,
             temperature=1.31,
             top_p=0.14,
             repetition_penalty=1.17,
             top_k=49,
             max_new_tokens=4096 - input_tokens,
-            stop_sequences=["</s>", "<|>", "<|im_end|>", "<|im_start|>"],
+            stop_sequences=["</s>"],
             seed=random.randint(0, 100000),
         )
 
@@ -93,6 +120,10 @@ class LLM:
         for t in completion:
             # The first response does not contain a token so we need to
             # to skip any chunk from the model that does not contain a token
-            if t.token.text == "" or t.token.special or t.token.text == "<|im_end|>":
+            if (
+                t.token.text == ""
+                or t.token.special
+                or t.token.text == "[/INST]"
+            ):
                 continue
             yield t.token.text

@@ -12,11 +12,11 @@ from typing import Iterator, List
 class LLM:
     def __init__(self) -> None:
         self.tokenizer = AutoTokenizer.from_pretrained(
-            'mistralai/Mistral-7B-v0.1'
+            "HuggingFaceH4/zephyr-7b-beta"
         )
         self.client = Client(base_url=os.environ.get("TXT_GEN_URL"))
 
-    def preprocess_messages(self, messages: List[Message]) -> str:
+    def preprocess_messages(self, messages: List[Message]) -> List[dict]:
         # Initialize the chat messages with an empty list
         chat_messages = []
 
@@ -59,24 +59,43 @@ class LLM:
         # chronological order
         chat_messages.reverse()
 
-        prompt = f"<|system|>\n{SYSTEM_MESSAGE}</s>\n"
-        for msg in chat_messages:
-            r = "<|user|>" if msg['role'] == "user" else "<|assistant|>"
-            prompt += f"{r}\n{msg['content']}</s>\n"
-        prompt += f"<|assistant|>\n"
+        # Add the system message to the beginning of the chat messages
+        chat_messages.insert(
+            0,
+            {
+                "role": "system",
+                "content": SYSTEM_MESSAGE,
+            },
+        )
 
-        return prompt
+        return chat_messages
 
     def chat_completion(self, messages: List[Message]) -> Iterator[str]:
         # Preprocess the chat messages
         chat_messages = self.preprocess_messages(messages)
 
+        # apply the chat template
+        content = self.tokenizer.apply_chat_template(chat_messages, tokenize=False, add_generation_prompt=True)
+
         # get input token count
-        input_tokens = len(self.tokenizer.encode(chat_messages))
+        input_tokens = len(self.tokenizer.encode(content))
+
+        print(
+            "--------------------------------------------------------------------------------",
+            flush=True
+        )
+        print(
+            content,
+            flush=True
+        )
+        print(
+            "--------------------------------------------------------------------------------",
+            flush=True
+        )
 
         # Create a new chat completion to stream the response from the model
         completion = self.client.generate_stream(
-            prompt=chat_messages,
+            prompt=content,
             temperature=1.31,
             top_p=0.14,
             repetition_penalty=1.17,
