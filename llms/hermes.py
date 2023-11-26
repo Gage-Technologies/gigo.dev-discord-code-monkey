@@ -3,7 +3,7 @@ import os
 import random
 import sys
 from database import Message
-from const import SYSTEM_MESSAGE
+from const import HERMES_SYSTEM_MESSAGE
 from transformers import AutoTokenizer
 from text_generation import Client
 from typing import Iterator, List
@@ -24,7 +24,7 @@ class LLM:
 
         # Initialize the token size to the length of the
         # system message
-        token_size = len(self.tokenizer.encode(SYSTEM_MESSAGE))
+        token_size = len(self.tokenizer.encode(HERMES_SYSTEM_MESSAGE))
 
         # double the token size if there are more than 2 messages because we duplicate the system message
         # if len(messages) >= 2:
@@ -65,7 +65,7 @@ class LLM:
         # chronological order
         chat_messages.reverse()
 
-        prompt = f"<|im_start|>system\n{SYSTEM_MESSAGE}<|im_end|>\n"
+        prompt = f"<|im_start|>system\n{HERMES_SYSTEM_MESSAGE}<|im_end|>\n"
         for i, msg in enumerate(chat_messages):
             r = "user" if msg['role'] == "user" else "assistant"
             prompt += f"<|im_start|>{r}\n{msg['content']}<|im_end|>\n"

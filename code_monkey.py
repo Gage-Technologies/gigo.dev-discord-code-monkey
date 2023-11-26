@@ -32,7 +32,7 @@ async def handle_cm_message(
     content = re.sub(r"<@\d+>", " ", message.content)
 
     # create a new chat if the message is clear
-    if content.strip() == "clear":
+    if content.strip() == "clear" or content.strip() == "forget":
         db.create_chat(
             Chat(
                 id=int(time.time() * 1000),
@@ -131,8 +131,7 @@ async def handle_cm_message(
             response = main_content + f"\n... [Read more]({paste_url})"
         else:
             response = (
-                main_content
-                + "\n... [Content too long, cannot display the rest.]"
+                main_content + "\n... [Content too long, cannot display the rest.]"
             )
 
     # Save the response to the database
@@ -227,32 +226,47 @@ def post_process_response(response: str) -> Tuple[str, Optional[str]]:
     Clean the output of the llm
     """
     response = re.sub(r"^.*Server Name:\s*", "", response).strip()
-    response = (
-        response.replace("<|im_end|>", "").replace("<im_start>", "").strip()
-    )
+    response = response.replace("<|im_end|>", "").replace("<im_start>", "").strip()
     response = (
         response.replace("<|assistant|>", "")
         .replace("<|user|>", "")
         .replace("<|system|>", "")
         .strip()
     )
-    response = (
-        response.replace("[INST]", "").replace("[/INST]", "").strip()
-    )
+    response = response.replace("[INST]", "").replace("[/INST]", "").strip()
 
     # handle image generation
     prompt = None
     if response.startswith("<image>"):
         # extract the prompt between the <image> tags
-        start = response.find('<image>') + len('<image>')
-        end = response.find('</image>')
+        start = response.find("<image>") + len("<image>")
+        end = response.find("</image>")
         prompt = response[start:end].strip()
 
         if end != -1:
             # get the content following the </image> tag
-            end += len('</image>')
+            end += len("</image>")
         response = response[end:].strip()
-    
+
+    # regex to parse a function call in the message
+    pattern = r"<function>\s*({.*?})\s*</function>"
+    match = re.search(pattern, response, re.DOTALL)
+    if match:
+        call = match.group(1).strip()
+        print("Extracted Call: ", call, flush=True)
+        response = re.sub(pattern, "", response)
+        try:
+            # add an extra } if there is an uneven number of } to {
+            if call.count("{") > call.count("}"):
+                call += (call.count("{") - call.count("}")) * "}"
+            func_call = json.loads(call)
+            prompt = func_call["arguments"]["prompt"]
+            return response, prompt
+        except Exception as e:
+            print("ERROR: failed to parse image gen: ", e, flush=True)
+            pass
+
+
     try:
         func_call = json.loads(response)
         prompt = func_call["params"]["prompt"]
