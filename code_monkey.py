@@ -119,6 +119,7 @@ async def handle_cm_message(
     print("Raw response: ", response, flush=True)
 
     # Post process the message content by removing ### Server Name: ... from the beginning if it exsits using regex
+    original_response = response
     response, image_prompt = post_process_response(response)
 
     # Check if the response is longer than 2000 characters
@@ -137,7 +138,7 @@ async def handle_cm_message(
     # Save the response to the database
     database_msg_content = response
     if image_prompt:
-        database_msg_content = f"<image>{image_prompt}</image>\n{response}"
+        database_msg_content = original_response
     res_message = Message(
         id=int(time.time() * 1000),
         content=database_msg_content,
@@ -249,17 +250,18 @@ def post_process_response(response: str) -> Tuple[str, Optional[str]]:
         response = response[end:].strip()
 
     # regex to parse a function call in the message
-    pattern = r"<function>\s*({.*?})\s*</function>"
+    pattern = r"<function_call>\s*({.*?})\s*</function_call>"
     match = re.search(pattern, response, re.DOTALL)
     if match:
         call = match.group(1).strip()
         print("Extracted Call: ", call, flush=True)
-        response = re.sub(pattern, "", response)
+        response = re.sub(pattern, "", response, flags=re.DOTALL).strip()
         try:
             # add an extra } if there is an uneven number of } to {
             if call.count("{") > call.count("}"):
                 call += (call.count("{") - call.count("}")) * "}"
             func_call = json.loads(call)
+            assert func_call["name"] == "generate_image"
             prompt = func_call["arguments"]["prompt"]
             return response, prompt
         except Exception as e:
