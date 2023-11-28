@@ -153,6 +153,9 @@ Include your response after the function call.
 You must give a conversational response after the function call.
 Use the generate_image function to create an image whenever you are asked to provide an image in any form.
 Use the generate_image function to create an image whenever the user asks you to "generate an image", "create an image", "give them an image", "make then an image" or any other request for an image.
+When generating an image via the generate_image function you must include the sampler and cfg_scale parameters. 
+When generating an image, select the best sampler, cfg scale, and style preset for the requested image!
+When selecting a style preset, only select a valid style preset from the enums. If no valid preset exists, select null for the style preset parameter.
 
 ### Function Calling Instructions
 You can call functions by prefacing your response with the function call.
@@ -164,5 +167,11 @@ All of your available functions are previded in the Function List sections.
 Include your conversation response after the function call block. Do not preface the conversation block with anything, just begin speaking to the user as normal.
 
 ### Function List
-<function> { "name": "generate_image", "description": "Generate an image using Stable Diffusion XL.", "parameters": { "type": "object", "properties": { "prompt": { "type": "string", "description": "A detailed and thorough description of the image." } }, "required": [ "prompt" ] } } </function>
+<function> 
+{
+  "name": "generate_image",
+  "description": "Generate an image using Stable Diffusion XL.",
+  "parameters": <GEN_PARAMS>
+}
+</function>
 """

@@ -12,7 +12,12 @@ import discord
 import requests
 from discord import ClientUser, Message as DiscordMessage
 from database import Database, Chat, Message
-from images.stablility_ai import get_image_for_prompt
+from images.stablility_ai import (
+    SDXLParams,
+    SDXLSampler,
+    SDXLStylePreset,
+    get_image_for_prompt,
+)
 from llms.dolphin import LLM
 
 from typing import Optional, Tuple
@@ -160,7 +165,7 @@ async def handle_cm_message(
     await partialMessage.edit(content=edit_content)
 
     if image_prompt:
-        print("Generating an image: ", image_prompt, flush=True)
+        print("Generating an image: ", image_prompt.json(), flush=True)
         # generate seed
         seed = random.randrange(100000)
 
@@ -169,13 +174,13 @@ async def handle_cm_message(
             image_content = get_image_for_prompt(image_prompt, seed)
         except Exception as e:
             print("Error generating image: ", e, flush=True)
-            partialMessage.edit(
+            await partialMessage.edit(
                 content=response + "\nMonkey failed to generate image :("
             )
             return
 
         if image_content is None:
-            partialMessage.edit(
+            await partialMessage.edit(
                 content=response + "\nMonkey failed to generate image :("
             )
             return
@@ -192,8 +197,8 @@ async def handle_cm_message(
             await partialMessage.reply(
                 file=discord.File(
                     BytesIO(base64.b64decode(image_content)),
-                    filename=f"GIGO_Code_Monkey_{image_prompt.replace(' ', '_')[:50]}.png",
-                    description=image_prompt[:1024],
+                    filename=f"GIGO_Code_Monkey_{image_prompt.prompt.replace(' ', '_')[:50]}.png",
+                    description=image_prompt.prompt[:1024],
                 )
             )
             db.add_image_to_message(res_message.id, image_content, seed)
@@ -222,7 +227,7 @@ def upload_to_pastebin(content: str) -> str:
         return None
 
 
-def post_process_response(response: str) -> Tuple[str, Optional[str]]:
+def post_process_response(response: str) -> Tuple[str, Optional[SDXLParams]]:
     """
     Clean the output of the llm
     """
@@ -256,22 +261,51 @@ def post_process_response(response: str) -> Tuple[str, Optional[str]]:
         call = match.group(1).strip()
         print("Extracted Call: ", call, flush=True)
         response = re.sub(pattern, "", response, flags=re.DOTALL).strip()
+        # add an extra } if there is an uneven number of } to {
+        if call.count("{") > call.count("}"):
+            call += (call.count("{") - call.count("}")) * "}"
+
+        # first try to parse it with pydantic for advanced options
         try:
-            # add an extra } if there is an uneven number of } to {
-            if call.count("{") > call.count("}"):
-                call += (call.count("{") - call.count("}")) * "}"
+            func_call = json.loads(call)
+            assert func_call["name"] == "generate_image"
+            if "sampler" in func_call["arguments"].keys():
+                func_call["arguments"][
+                    "sampler"
+                ] = SDXLSampler.from_string_with_default(
+                    func_call["arguments"]["sampler"]
+                )
+            if "preset" in func_call["arguments"].keys():
+                if (
+                    func_call["arguments"]["preset"] is None
+                    or func_call["arguments"]["preset"] == ""
+                ):
+                    func_call["arguments"]["preset"] = None
+                else:
+                    func_call["arguments"][
+                        "preset"
+                    ] = SDXLStylePreset.from_string_with_default(
+                        func_call["arguments"]["preset"]
+                    )
+            prompt = SDXLParams(**func_call["arguments"])
+            return response, prompt
+        except Exception as e:
+            print("ERROR: failed to parse image gen as pydantic: ", e, flush=True)
+            pass
+
+        try:
             func_call = json.loads(call)
             assert func_call["name"] == "generate_image"
             prompt = func_call["arguments"]["prompt"]
-            return response, prompt
+            return response, SDXLParams(prompt=prompt, cfg_scale=7, sampler=SDXLSampler.K_DPMPP_2M)
         except Exception as e:
             print("ERROR: failed to parse image gen: ", e, flush=True)
             pass
 
-
     try:
         func_call = json.loads(response)
-        prompt = func_call["params"]["prompt"]
+        p = func_call["params"]["prompt"]
+        prompt = SDXLParams(prompt=p, cfg_scale=7, sampler=SDXLSampler.K_DPMPP_2M)
     except Exception:
         pass
 

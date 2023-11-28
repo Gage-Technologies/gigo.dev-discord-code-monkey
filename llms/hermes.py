@@ -8,15 +8,34 @@ from transformers import AutoTokenizer
 from text_generation import Client
 from typing import Iterator, List
 
+from images.stablility_ai import SDXLParams
+
+
+HERMES_SYSTEM_MESSAGE_FORMATTED = HERMES_SYSTEM_MESSAGE.replace(
+    "<GEN_PARAMS>", SDXLParams.schema_json(indent=2)
+)
+
 
 class LLM:
     def __init__(self) -> None:
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            'mistralai/Mistral-7B-v0.1'
-        )
+        self.tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-v0.1")
         # have to do it this way because the official repo has a broken added_tokens.json file
         self.tokenizer.add_tokens(["<|im_end|>", "<|im_start|>"])
         self.client = Client(base_url=os.environ.get("TXT_GEN_URL"))
+
+    @staticmethod
+    def get_system_message() -> str:
+        schema = SDXLParams.schema_json(indent=2)
+        lines = schema.split("\n")
+        formatted_schema = []
+        for i, l in enumerate(lines):
+            if i != 0:
+                l = "  " + l
+            formatted_schema.append(l)
+
+        return HERMES_SYSTEM_MESSAGE.replace(
+            "<GEN_PARAMS>", "\n".join(formatted_schema)
+        )
 
     def preprocess_messages(self, messages: List[Message]) -> str:
         # Initialize the chat messages with an empty list
@@ -24,7 +43,7 @@ class LLM:
 
         # Initialize the token size to the length of the
         # system message
-        token_size = len(self.tokenizer.encode(HERMES_SYSTEM_MESSAGE))
+        token_size = len(self.tokenizer.encode(HERMES_SYSTEM_MESSAGE_FORMATTED))
 
         # double the token size if there are more than 2 messages because we duplicate the system message
         # if len(messages) >= 2:
@@ -65,9 +84,9 @@ class LLM:
         # chronological order
         chat_messages.reverse()
 
-        prompt = f"<|im_start|>system\n{HERMES_SYSTEM_MESSAGE}<|im_end|>\n"
+        prompt = f"<|im_start|>system\n{HERMES_SYSTEM_MESSAGE_FORMATTED}<|im_end|>\n"
         for i, msg in enumerate(chat_messages):
-            r = "user" if msg['role'] == "user" else "assistant"
+            r = "user" if msg["role"] == "user" else "assistant"
             prompt += f"<|im_start|>{r}\n{msg['content']}<|im_end|>\n"
 
             # if this is the 2nd to last message and there are more than 2 messages
@@ -84,15 +103,12 @@ class LLM:
 
         print(
             "--------------------------------------------------------------------------------",
-            flush=True
+            flush=True,
         )
-        print(
-            chat_messages,
-            flush=True
-        )
+        print(chat_messages, flush=True)
         print(
             "--------------------------------------------------------------------------------",
-            flush=True
+            flush=True,
         )
 
         # get input token count
@@ -115,10 +131,10 @@ class LLM:
         for t in completion:
             # The first response does not contain a token so we need to
             # to skip any chunk from the model that does not contain a token
-            if (
-                t.token.text == ""
-                or t.token.special
-                or t.token.text == "<|im_end|>"
-            ):
+            if t.token.text == "" or t.token.special or t.token.text == "<|im_end|>":
                 continue
             yield t.token.text
+
+
+if __name__ == "__main__":
+    print(LLM.get_system_message())
