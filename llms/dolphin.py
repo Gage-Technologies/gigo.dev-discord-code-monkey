@@ -105,7 +105,7 @@ class LLM:
             top_p=0.14,
             repetition_penalty=1.17,
             top_k=49,
-            max_new_tokens=8096 - input_tokens,
+            max_new_tokens=6000 - input_tokens,
             stop_sequences=["</s>", "<|>", "<|im_end|>", "<|im_start|>"],
             seed=random.randint(0, 100000),
         )

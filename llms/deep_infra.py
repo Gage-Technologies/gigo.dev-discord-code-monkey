@@ -1,17 +1,16 @@
-from calendar import prmonth
+import json
 import os
-import random
-import sys
+from openai import OpenAI, Stream
+import tiktoken
 from database import Message
 from const import HERMES_SYSTEM_MESSAGE
+from typing import Any, Iterator, List
 from transformers import AutoTokenizer
-from text_generation import Client
-from typing import Iterator, List
 
 from images.replicate_playground_v2 import PlaygroundV2Params
 
 
-HERMES_SYSTEM_MESSAGE_FORMATTED = HERMES_SYSTEM_MESSAGE.replace(
+DEEP_INFRA_SYSTEM_MESSAGE_FORMATTED = HERMES_SYSTEM_MESSAGE.replace(
     "<GEN_PARAMS>", PlaygroundV2Params.schema_json(indent=2)
 )
 
@@ -19,9 +18,10 @@ HERMES_SYSTEM_MESSAGE_FORMATTED = HERMES_SYSTEM_MESSAGE.replace(
 class LLM:
     def __init__(self) -> None:
         self.tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-v0.1")
-        # have to do it this way because the official repo has a broken added_tokens.json file
-        self.tokenizer.add_tokens(["<|im_end|>", "<|im_start|>"])
-        self.client = Client(base_url=os.environ.get("TXT_GEN_URL"))
+        self.client = OpenAI(
+            api_key=os.environ["DEEPINFRA_API_KEY"],
+            base_url="https://api.deepinfra.com/v1/openai",
+        )
 
     @staticmethod
     def get_system_message() -> str:
@@ -37,17 +37,13 @@ class LLM:
             "<GEN_PARAMS>", "\n".join(formatted_schema)
         )
 
-    def preprocess_messages(self, messages: List[Message]) -> str:
+    def preprocess_messages(self, messages: List[Message]) -> List[dict]:
         # Initialize the chat messages with an empty list
         chat_messages = []
 
         # Initialize the token size to the length of the
         # system message
-        token_size = len(self.tokenizer.encode(HERMES_SYSTEM_MESSAGE_FORMATTED))
-
-        # double the token size if there are more than 2 messages because we duplicate the system message
-        # if len(messages) >= 2:
-        #     token_size *= 2
+        token_size = len(self.tokenizer.encode(DEEP_INFRA_SYSTEM_MESSAGE_FORMATTED))
 
         # Iterate over the messages in reverse order
         # formatting them into a list of ChatCompletionMessage
@@ -59,13 +55,13 @@ class LLM:
             # If the token size of the message is greater than
             # the maximum context size of the model then we
             # will skip the message
-            if message_token_size > 1000:
+            if message_token_size > 2048:
                 continue
 
             # If the token size of the message is greater than
             # the remaining token size then we will skip the
             # message
-            if message_token_size > 6000 - token_size:
+            if message_token_size + token_size > 8192:
                 continue
 
             # Add the message to the chat messages
@@ -84,57 +80,35 @@ class LLM:
         # chronological order
         chat_messages.reverse()
 
-        prompt = f"<|im_start|>system\n{HERMES_SYSTEM_MESSAGE_FORMATTED}<|im_end|>\n"
-        for i, msg in enumerate(chat_messages):
-            r = "user" if msg["role"] == "user" else "assistant"
-            prompt += f"<|im_start|>{r}\n{msg['content']}<|im_end|>\n"
+        # Add the system message to the beginning of the chat messages
+        chat_messages.insert(
+            0,
+            {
+                "role": "system",
+                "content": DEEP_INFRA_SYSTEM_MESSAGE_FORMATTED,
+            },
+        )
 
-            # if this is the 2nd to last message and there are more than 2 messages
-            # we duplicate the system message again to remind the bot
-            # if len(chat_messages) > 1 and i == len(chat_messages) - 2:
-            #     prompt += f"<|im_start|>system\n{SYSTEM_MESSAGE}<|im_end|>\n"
-        prompt += "<|im_start|>assistant\n"
-
-        return prompt
+        return chat_messages
 
     def chat_completion(self, messages: List[Message]) -> Iterator[str]:
         # Preprocess the chat messages
         chat_messages = self.preprocess_messages(messages)
 
-        print(
-            "--------------------------------------------------------------------------------",
-            flush=True,
-        )
-        print(chat_messages, flush=True)
-        print(
-            "--------------------------------------------------------------------------------",
-            flush=True,
-        )
-
-        # get input token count
-        input_tokens = len(self.tokenizer.encode(chat_messages))
+        print(json.dumps(chat_messages, indent=2), flush=True)
 
         # Create a new chat completion to stream the response from the model
-        completion = self.client.generate_stream(
-            prompt=chat_messages,
-            temperature=1.31,
-            top_p=0.14,
-            repetition_penalty=1.17,
-            top_k=49,
-            max_new_tokens=6000 - input_tokens,
-            stop_sequences=["</s>", "<|>", "<|im_end|>", "<|im_start|>"],
-            seed=random.randint(0, 100000),
+        completion = self.client.chat.completions.create(
+            messages=chat_messages,
+            stream=True,
+            temperature=0.7,
+            top_p=0.3,
+            model="mistralai/Mixtral-8x7B-Instruct-v0.1",
         )
 
         # Iterate over the chat completion to get the response
         # from the model one token at a time
         for t in completion:
-            # The first response does not contain a token so we need to
-            # to skip any chunk from the model that does not contain a token
-            if t.token.text == "" or t.token.special or t.token.text == "<|im_end|>":
+            if t.choices[0].delta.content is None:
                 continue
-            yield t.token.text
-
-
-if __name__ == "__main__":
-    print(LLM.get_system_message())
+            yield t.choices[0].delta.content

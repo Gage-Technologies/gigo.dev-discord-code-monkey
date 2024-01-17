@@ -1,6 +1,6 @@
 discord-py
 python-dotenv
-openai
+openai==1.7.2
 python-dotenv
 pydantic<2.0
 pymongo
@@ -13,3 +13,4 @@ pillow
 webuiapi
 stability-sdk
 jinja2
+replicate

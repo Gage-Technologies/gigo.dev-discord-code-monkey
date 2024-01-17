@@ -13,12 +13,14 @@ import requests
 from discord import ClientUser, Message as DiscordMessage
 from database import Database, Chat, Message
 from images.stablility_ai import (
-    SDXLParams,
-    SDXLSampler,
-    SDXLStylePreset,
-    get_image_for_prompt,
+    generate_video_from_image
 )
-from llms.dolphin import LLM
+from images.replicate_playground_v2 import (
+    PlaygroundV2Params,
+    PlaygroundV2Sampler,
+    get_image_for_prompt
+)
+from llms.deep_infra import LLM
 
 from typing import Optional, Tuple
 
@@ -159,7 +161,7 @@ async def handle_cm_message(
     if image_prompt:
         if len(edit_content) > 0:
             edit_content += "\n"
-        edit_content += "Generating an image..."
+        edit_content += f"Generating {'a video' if image_prompt.animate else 'an image'}..."
     if len(edit_content) == 0:
         edit_content = "Monkey speechless..."
     await partialMessage.edit(content=edit_content)
@@ -188,7 +190,22 @@ async def handle_cm_message(
         if image_content == "<|IAC|>":
             image_prompt = None
             response = "Monkey finds your request inappropriate :("
-        else:
+        elif image_prompt.animate:
+            video = generate_video_from_image(
+                image_content, 
+                random.randint(1, 2147483647), 
+                image_prompt.motion_cfg_scale, 
+                image_prompt.motion_bucket
+            )
+            await partialMessage.reply(
+                file=discord.File(
+                    BytesIO(base64.b64decode(video)),
+                    filename=f"GIGO_Code_Monkey_{image_prompt.prompt.replace(' ', '_')[:50]}.mp4",
+                    description=image_prompt.prompt[:1024],
+                )
+            )
+            db.add_image_to_message(res_message.id, image_content, seed)
+        else:   
             print(
                 "Image Content: ",
                 "empty" if image_content is None else image_content[:10],
@@ -227,7 +244,7 @@ def upload_to_pastebin(content: str) -> str:
         return None
 
 
-def post_process_response(response: str) -> Tuple[str, Optional[SDXLParams]]:
+def post_process_response(response: str) -> Tuple[str, Optional[PlaygroundV2Params]]:
     """
     Clean the output of the llm
     """
@@ -255,7 +272,7 @@ def post_process_response(response: str) -> Tuple[str, Optional[SDXLParams]]:
         response = response[end:].strip()
 
     # regex to parse a function call in the message
-    pattern = r"<function_call>\s*({.*?})\s*</function_call>"
+    pattern = r"<function(?:_call)?>\s*({.*?})\s*</function(?:_call)?>"
     match = re.search(pattern, response, re.DOTALL)
     if match:
         call = match.group(1).strip()
@@ -272,22 +289,22 @@ def post_process_response(response: str) -> Tuple[str, Optional[SDXLParams]]:
             if "sampler" in func_call["arguments"].keys():
                 func_call["arguments"][
                     "sampler"
-                ] = SDXLSampler.from_string_with_default(
+                ] = PlaygroundV2Sampler.from_string_with_default(
                     func_call["arguments"]["sampler"]
                 )
-            if "preset" in func_call["arguments"].keys():
-                if (
-                    func_call["arguments"]["preset"] is None
-                    or func_call["arguments"]["preset"] == ""
-                ):
-                    func_call["arguments"]["preset"] = None
-                else:
-                    func_call["arguments"][
-                        "preset"
-                    ] = SDXLStylePreset.from_string_with_default(
-                        func_call["arguments"]["preset"]
-                    )
-            prompt = SDXLParams(**func_call["arguments"])
+            # if "preset" in func_call["arguments"].keys():
+            #     if (
+            #         func_call["arguments"]["preset"] is None
+            #         or func_call["arguments"]["preset"] == ""
+            #     ):
+            #         func_call["arguments"]["preset"] = None
+            #     else:
+            #         func_call["arguments"][
+            #             "preset"
+            #         ] = SDXLStylePreset.from_string_with_default(
+            #             func_call["arguments"]["preset"]
+            #         )
+            prompt = PlaygroundV2Params(**func_call["arguments"])
             return response, prompt
         except Exception as e:
             print("ERROR: failed to parse image gen as pydantic: ", e, flush=True)
@@ -297,7 +314,7 @@ def post_process_response(response: str) -> Tuple[str, Optional[SDXLParams]]:
             func_call = json.loads(call)
             assert func_call["name"] == "generate_image"
             prompt = func_call["arguments"]["prompt"]
-            return response, SDXLParams(prompt=prompt, cfg_scale=7, sampler=SDXLSampler.K_DPMPP_2M)
+            return response, PlaygroundV2Params(prompt=prompt, cfg_scale=7, sampler=PlaygroundV2Sampler.DPM_MULTI_SOLVER)
         except Exception as e:
             print("ERROR: failed to parse image gen: ", e, flush=True)
             pass
@@ -305,8 +322,11 @@ def post_process_response(response: str) -> Tuple[str, Optional[SDXLParams]]:
     try:
         func_call = json.loads(response)
         p = func_call["params"]["prompt"]
-        prompt = SDXLParams(prompt=p, cfg_scale=7, sampler=SDXLSampler.K_DPMPP_2M)
+        prompt = PlaygroundV2Params(prompt=p, cfg_scale=7, sampler=PlaygroundV2Sampler.DPM_MULTI_SOLVER)
     except Exception:
         pass
+
+    # remove any empty codeblocks
+    response = re.sub(r"```(:?.+)?\n```", "", response)
 
     return response, prompt

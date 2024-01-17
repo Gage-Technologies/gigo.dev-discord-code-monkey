@@ -1,11 +1,18 @@
 from enum import Enum
+from io import BytesIO
 import os
 import base64
 import random
 import sys
+import tempfile
+import time
 from pydantic import BaseModel, Field
 import warnings
+import requests
 from stability_sdk import client
+import http.client
+from PIL import Image
+
 import stability_sdk.interfaces.gooseai.generation.generation_pb2 as generation
 
 from typing import Optional
@@ -134,6 +141,19 @@ class SDXLParams(BaseModel):
         None,
         description="Choose a prebuilt set of styles that will be applied to your generated image.",
     )
+    animate: bool = Field(False, description="Generated an animated version of the image.")
+    motion_bucket: float = Field(
+        40, 
+        description="The amount of motion used when generating an animated version of the image. Lower values produce more consistent output but higher values create more intriuging videos.",
+        ge=0,
+        le=255
+    )
+    motion_cfg_scale: float = Field(
+        2.5,
+        description="Influences how strongly the animation will match the original image. Higher values allow the animation to deviate more whereas lowe values keep the animation more consistent.",
+        ge=0,
+        le=10
+    )
 
 
 def get_image_for_prompt(
@@ -186,6 +206,80 @@ def get_image_for_prompt(
                 return "<|IAC|>"
             if artifact.type == generation.ARTIFACT_IMAGE:
                 return base64.b64encode(artifact.binary).decode()
+
+
+def generate_video_from_image(
+    image: str, seed: int, cfg_scale: float, motion_bucket_id: int
+) -> str:
+    """
+    Generates a video from an image using the Stability.ai API.
+
+    Args:
+        api_key (str): Your API key for Stability.ai.
+        image_path (str): The path to the image file.
+        seed (int): The seed for the random number generator.
+        cfg_scale (float): The configuration scale for the video generation.
+        motion_bucket_id (int): The motion bucket ID for the video generation.
+
+    Returns:
+        str: The response from the API as a string.
+    """
+    tfile = tempfile.mkstemp(suffix=".png")
+    with open(tfile[1], "wb") as f:
+        f.write(base64.b64decode(image))
+
+    img = Image.open(tfile[1])
+    img = img.resize((1024, 576))
+
+    # Encode the file to png bytes
+    img_bytes = BytesIO()
+    img.save(img_bytes, format='PNG')
+    img_bytes.seek(0)
+
+    # Prepare the files and data for the multipart/form-data
+    files = {"image": ("image.png", img_bytes.read(), "image/png")}
+    data = {"seed": seed, "cfg_scale": cfg_scale + 0.0001, "motion_bucket_id": motion_bucket_id}
+
+    # Setup headers
+    headers = {"Authorization": f"Bearer {os.environ.get('SD_KEY')}"}
+
+    # Make the request
+    response = requests.post(
+        "https://api.stability.ai/v2alpha/generation/image-to-video",
+        headers=headers,
+        files=files,
+        data=data,
+        timeout=60
+    )
+
+    if response.status_code != 200:
+        raise Exception("failed to generate video: {}".format(response.text))
+
+    # Get the API response
+    id = response.json()["id"]
+
+    print("video id:", id)
+
+    headers["Accept"] = "application/json"
+
+    # Poll the API on loop until our video is done generating
+    while True:
+        r = requests.get(
+            f"https://api.stability.ai/v2alpha/generation/image-to-video/result/{id}", 
+            headers=headers, 
+            timeout=60
+        )
+
+        # Handle error
+        if r.status_code >= 400:
+            raise Exception(f"failed to retrieve video: {r.text}")
+
+        # Loop for in progress
+        if r.status_code == 202:
+            time.sleep(3)
+            continue
+
+        return r.json()["video"]
 
 
 if __name__ == "__main__":

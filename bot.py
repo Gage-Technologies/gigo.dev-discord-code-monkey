@@ -10,7 +10,7 @@ import openai
 
 from code_monkey import handle_cm_message
 from database import Database
-from llms.hermes import LLM
+from llms.together import LLM
 
 # initialize openai from the env
 openai.api_key = os.environ["OPENAI_API_KEY"]
