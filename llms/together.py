@@ -61,7 +61,7 @@ class LLM:
             # If the token size of the message is greater than
             # the remaining token size then we will skip the
             # message
-            if message_token_size + token_size > 8192:
+            if message_token_size + token_size > 3500:
                 continue
 
             # Add the message to the chat messages
