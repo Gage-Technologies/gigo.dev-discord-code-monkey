@@ -195,7 +195,6 @@ async def handle_cm_message(
                 image_content, 
                 random.randint(1, 2147483647), 
                 image_prompt.motion_cfg_scale, 
-                image_prompt.motion_bucket
             )
             await partialMessage.reply(
                 file=discord.File(

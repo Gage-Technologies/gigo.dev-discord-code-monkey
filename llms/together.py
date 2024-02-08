@@ -101,9 +101,8 @@ class LLM:
         completion = self.client.chat.completions.create(
             messages=chat_messages,
             stream=True,
-            temperature=0.73,
+            temperature=0.5,
             top_p=0.95,
-            frequency_penalty=1.2,
             model="NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO",
         )
 

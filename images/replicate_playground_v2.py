@@ -55,12 +55,6 @@ class PlaygroundV2Params(BaseModel):
     animate: bool = Field(
         False, description="Generated an animated version of the image."
     )
-    motion_bucket: float = Field(
-        40,
-        description="The amount of motion used when generating an animated version of the image. Lower values produce more consistent output but higher values create more intriuging videos.",
-        ge=0,
-        le=255,
-    )
     motion_cfg_scale: float = Field(
         2.5,
         description="Influences how strongly the animation will match the original image. Higher values allow the animation to deviate more whereas lowe values keep the animation more consistent.",

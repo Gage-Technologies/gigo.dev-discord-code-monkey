@@ -142,12 +142,6 @@ class SDXLParams(BaseModel):
         description="Choose a prebuilt set of styles that will be applied to your generated image.",
     )
     animate: bool = Field(False, description="Generated an animated version of the image.")
-    motion_bucket: float = Field(
-        40, 
-        description="The amount of motion used when generating an animated version of the image. Lower values produce more consistent output but higher values create more intriuging videos.",
-        ge=0,
-        le=255
-    )
     motion_cfg_scale: float = Field(
         2.5,
         description="Influences how strongly the animation will match the original image. Higher values allow the animation to deviate more whereas lowe values keep the animation more consistent.",
@@ -209,7 +203,7 @@ def get_image_for_prompt(
 
 
 def generate_video_from_image(
-    image: str, seed: int, cfg_scale: float, motion_bucket_id: int
+    image: str, seed: int, cfg_scale: float
 ) -> str:
     """
     Generates a video from an image using the Stability.ai API.
@@ -219,7 +213,6 @@ def generate_video_from_image(
         image_path (str): The path to the image file.
         seed (int): The seed for the random number generator.
         cfg_scale (float): The configuration scale for the video generation.
-        motion_bucket_id (int): The motion bucket ID for the video generation.
 
     Returns:
         str: The response from the API as a string.
@@ -238,7 +231,7 @@ def generate_video_from_image(
 
     # Prepare the files and data for the multipart/form-data
     files = {"image": ("image.png", img_bytes.read(), "image/png")}
-    data = {"seed": seed, "cfg_scale": cfg_scale + 0.0001, "motion_bucket_id": motion_bucket_id}
+    data = {"seed": seed, "cfg_scale": cfg_scale + 0.0001, "motion_bucket_id": 127}
 
     # Setup headers
     headers = {"Authorization": f"Bearer {os.environ.get('SD_KEY')}"}
