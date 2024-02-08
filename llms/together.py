@@ -17,7 +17,7 @@ TOGETHER_SYSTEM_MESSAGE_FORMATTED = HERMES2_SYSTEM_MESSAGE.replace(
 
 class LLM:
     def __init__(self) -> None:
-        self.tokenizer = AutoTokenizer.from_pretrained("mistralai/Mixtral-8x7B-Instruct-v0.1")
+        self.tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen1.5-72B-Chat")
         self.client = OpenAI(
             api_key=os.environ["TOGETHER_API_KEY"],
             base_url="https://api.together.xyz",
@@ -103,7 +103,7 @@ class LLM:
             stream=True,
             temperature=0.5,
             top_p=0.95,
-            model="NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO",
+            model="Qwen/Qwen1.5-72B-Chat",
         )
 
         # Iterate over the chat completion to get the response
