@@ -126,7 +126,7 @@ class SDXLParams(BaseModel):
         ...,
         description="A detailed, thorough, and vivid description of the image to be generate with a minimum of 20 words.",
     )
-    cfg_scale: float = Field(
+    guidance_scale: float = Field(
         ...,
         description="Influences how strongly your generation is guided to match your prompt.",
         # mininum and maximum
@@ -141,7 +141,7 @@ class SDXLParams(BaseModel):
         None,
         description="Choose a prebuilt set of styles that will be applied to your generated image.",
     )
-    animate: bool = Field(False, description="Generated an animated version of the image.")
+    animate: bool = Field(False, description="Whether to animate the image into a short video.")
     motion_cfg_scale: float = Field(
         2.5,
         description="Influences how strongly the animation will match the original image. Higher values allow the animation to deviate more whereas lowe values keep the animation more consistent.",
@@ -170,7 +170,7 @@ def get_image_for_prompt(
                 prompt=params.prompt,
                 seed=seed,
                 steps=50,  # Amount of inference steps performed on image generation. Defaults to 30.
-                cfg_scale=params.cfg_scale,  # Influences how strongly your generation is guided to match your prompt.
+                cfg_scale=params.guidance_scale,  # Influences how strongly your generation is guided to match your prompt.
                 # Setting this value higher increases the strength in which it tries to match your prompt.
                 # Defaults to 7.0 if not specified.
                 width=1344,  # Generation width, defaults to 512 if not included.

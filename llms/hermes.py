@@ -8,11 +8,11 @@ from transformers import AutoTokenizer
 from text_generation import Client
 from typing import Iterator, List
 
-from images.replicate_playground_v2 import PlaygroundV2Params
+from images.sd3 import SD3Params
 
 
 HERMES_SYSTEM_MESSAGE_FORMATTED = HERMES_SYSTEM_MESSAGE.replace(
-    "<GEN_PARAMS>", PlaygroundV2Params.schema_json(indent=2)
+    "<GEN_PARAMS>", SD3Params.schema_json(indent=2)
 )
 
 
@@ -25,7 +25,7 @@ class LLM:
 
     @staticmethod
     def get_system_message() -> str:
-        schema = PlaygroundV2Params.schema_json(indent=2)
+        schema = SD3Params.schema_json(indent=2)
         lines = schema.split("\n")
         formatted_schema = []
         for i, l in enumerate(lines):

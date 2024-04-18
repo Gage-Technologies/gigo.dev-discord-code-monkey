@@ -14,3 +14,5 @@ webuiapi
 stability-sdk
 jinja2
 replicate
+anthropic
+requests-toolbelt

@@ -15,9 +15,8 @@ from database import Database, Chat, Message
 from images.stablility_ai import (
     generate_video_from_image
 )
-from images.replicate_playground_v2 import (
-    PlaygroundV2Params,
-    PlaygroundV2Sampler,
+from images.sd3 import (
+    SD3Params,
     get_image_for_prompt
 )
 from llms.deep_infra import LLM
@@ -129,6 +128,15 @@ async def handle_cm_message(
     original_response = response
     response, image_prompt = post_process_response(response)
 
+    # retrieve the last image if we are editing
+    last_image = None
+    if image_prompt is not None and image_prompt.edit_last_image:
+        # iterate the messages in reverse order looking for the first image
+        for message in reversed(messages):
+            if message.image is not None:
+                last_image = message.image
+                break
+
     # Check if the response is longer than 2000 characters
     if len(response) > 2000:
         main_content = response[:1500]
@@ -173,13 +181,15 @@ async def handle_cm_message(
 
         # generate the image
         try:
-            image_content = get_image_for_prompt(image_prompt, seed)
+            image_content = get_image_for_prompt(image_prompt, seed=seed, last_img=last_image)
         except Exception as e:
             print("Error generating image: ", e, flush=True)
-            await partialMessage.edit(
-                content=response + "\nMonkey failed to generate image :("
-            )
-            return
+            if str(e).lower().find("nsfw") == -1:
+                await partialMessage.edit(
+                    content=response + "\nMonkey failed to generate image :("
+                )
+                return
+            image_content = "<|IAC|>"
 
         if image_content is None:
             await partialMessage.edit(
@@ -243,7 +253,7 @@ def upload_to_pastebin(content: str) -> str:
         return None
 
 
-def post_process_response(response: str) -> Tuple[str, Optional[PlaygroundV2Params]]:
+def post_process_response(response: str) -> Tuple[str, Optional[SD3Params]]:
     """
     Clean the output of the llm
     """
@@ -285,25 +295,7 @@ def post_process_response(response: str) -> Tuple[str, Optional[PlaygroundV2Para
         try:
             func_call = json.loads(call)
             assert func_call["name"] == "generate_image"
-            if "sampler" in func_call["arguments"].keys():
-                func_call["arguments"][
-                    "sampler"
-                ] = PlaygroundV2Sampler.from_string_with_default(
-                    func_call["arguments"]["sampler"]
-                )
-            # if "preset" in func_call["arguments"].keys():
-            #     if (
-            #         func_call["arguments"]["preset"] is None
-            #         or func_call["arguments"]["preset"] == ""
-            #     ):
-            #         func_call["arguments"]["preset"] = None
-            #     else:
-            #         func_call["arguments"][
-            #             "preset"
-            #         ] = SDXLStylePreset.from_string_with_default(
-            #             func_call["arguments"]["preset"]
-            #         )
-            prompt = PlaygroundV2Params(**func_call["arguments"])
+            prompt = SD3Params(**func_call["arguments"])
             return response, prompt
         except Exception as e:
             print("ERROR: failed to parse image gen as pydantic: ", e, flush=True)
@@ -313,7 +305,7 @@ def post_process_response(response: str) -> Tuple[str, Optional[PlaygroundV2Para
             func_call = json.loads(call)
             assert func_call["name"] == "generate_image"
             prompt = func_call["arguments"]["prompt"]
-            return response, PlaygroundV2Params(prompt=prompt, cfg_scale=7, sampler=PlaygroundV2Sampler.DPM_MULTI_SOLVER)
+            return response, SD3Params(prompt=prompt)
         except Exception as e:
             print("ERROR: failed to parse image gen: ", e, flush=True)
             pass
@@ -321,7 +313,7 @@ def post_process_response(response: str) -> Tuple[str, Optional[PlaygroundV2Para
     try:
         func_call = json.loads(response)
         p = func_call["params"]["prompt"]
-        prompt = PlaygroundV2Params(prompt=p, cfg_scale=7, sampler=PlaygroundV2Sampler.DPM_MULTI_SOLVER)
+        prompt = SD3Params(prompt=p)
     except Exception:
         pass
 

@@ -7,17 +7,17 @@ from const import HERMES2_SYSTEM_MESSAGE
 from typing import Any, Iterator, List
 from transformers import AutoTokenizer
 
-from images.replicate_playground_v2 import PlaygroundV2Params
+from images.sd3 import SD3Params
 
 
 TOGETHER_SYSTEM_MESSAGE_FORMATTED = HERMES2_SYSTEM_MESSAGE.replace(
-    "<GEN_PARAMS>", PlaygroundV2Params.schema_json(indent=2)
+    "<GEN_PARAMS>", SD3Params.schema_json(indent=2)
 )
 
 
 class LLM:
     def __init__(self) -> None:
-        self.tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen1.5-72B-Chat")
+        self.tokenizer = AutoTokenizer.from_pretrained("mistral-community/Mixtral-8x22B-v0.1")
         self.client = OpenAI(
             api_key=os.environ["TOGETHER_API_KEY"],
             base_url="https://api.together.xyz",
@@ -25,7 +25,7 @@ class LLM:
 
     @staticmethod
     def get_system_message() -> str:
-        schema = PlaygroundV2Params.schema_json(indent=2)
+        schema = SD3Params.schema_json(indent=2)
         lines = schema.split("\n")
         formatted_schema = []
         for i, l in enumerate(lines):
@@ -33,7 +33,7 @@ class LLM:
                 l = "  " + l
             formatted_schema.append(l)
 
-        return HERMES_SYSTEM_MESSAGE.replace(
+        return HERMES2_SYSTEM_MESSAGE.replace(
             "<GEN_PARAMS>", "\n".join(formatted_schema)
         )
 
@@ -101,9 +101,10 @@ class LLM:
         completion = self.client.chat.completions.create(
             messages=chat_messages,
             stream=True,
-            temperature=0.5,
+            temperature=0.7,
             top_p=0.95,
-            model="Qwen/Qwen1.5-72B-Chat",
+            max_tokens=4000,
+            model="mistralai/Mixtral-8x22B-Instruct-v0.1",
         )
 
         # Iterate over the chat completion to get the response

@@ -8,7 +8,7 @@ import replicate
 
 class PlaygroundV2Sampler(Enum):
     DDIM = "DDIM"
-    DPM_MULTI_SOLVER = "DPMMultiSolver"
+    DPM_SOLVER_MULTISTEP = "DPMSolverMultistep"
     K_EULER = "K_EULER"
     K_EULER_ANCESTRAL = "K_EULER_ANCESTRAL"
     HEUN_DISCRETE = "HeunDiscrete"
@@ -19,7 +19,7 @@ class PlaygroundV2Sampler(Enum):
     def from_string_with_default(sampler_name: str) -> "PlaygroundV2Sampler":
         opts = {
             "DDIM": PlaygroundV2Sampler.DDIM,
-            "DPMMultiSolver": PlaygroundV2Sampler.DPM_MULTI_SOLVER,
+            "DPMSolverMultistep": PlaygroundV2Sampler.DPM_SOLVER_MULTISTEP,
             "K_EULER": PlaygroundV2Sampler.K_EULER,
             "K_EULER_ANCESTRAL": PlaygroundV2Sampler.K_EULER_ANCESTRAL,
             "HeunDiscrete": PlaygroundV2Sampler.HEUN_DISCRETE,
@@ -35,29 +35,29 @@ class PlaygroundV2Sampler(Enum):
 class PlaygroundV2Params(BaseModel):
     prompt: str = Field(
         ...,
-        description="A detailed, thorough, and vivid description of the image to be generate with a minimum of 20 words.",
+        description="(prompt): A detailed, thorough, and vivid description of the image to be generate with a minimum of 20 words.",
     )
     negative_prompt = Field(
-        "worst quality, low quality, blurry, grainy, out of focus, distorted, ugly, dull, boring, lifeless, bland, flat, generic, cliche, overused, unoriginal, derivative, predictable, uninspired, unimaginative, uninteresting, unexciting, unremarkable, forgettable, unmemorable, commonplace, ordinary, mundane, banal, pedestrian, mediocre, average, subpar",
-        description="Optional negative prompt for classifier-free guidance. Used to prevent the model from producing certain types of content.",
+        "ugly, deformed, noisy, blurry, distorted",
+        description="(negative_prompt): Optional negative prompt for classifier-free guidance. Used to prevent the model from producing certain types of content.",
     )
     cfg_scale: float = Field(
         ...,
-        description="Influences how strongly your generation is guided to match your prompt.",
+        description="(cfg_scale): Influences how strongly your generation is guided to match your prompt.",
         # mininum and maximum
-        ge=0,
-        le=35,
+        ge=1,
+        le=10,
     )
     sampler: PlaygroundV2Sampler = Field(
         ...,
-        description="Choose which sampler we want to denoise our generation with.",
+        description="(sampler) Choose which sampler we want to denoise our generation with.",
     )
     animate: bool = Field(
-        False, description="Generated an animated version of the image."
+        False, description="(animate): Generated an animated version of the image."
     )
     motion_cfg_scale: float = Field(
         2.5,
-        description="Influences how strongly the animation will match the original image. Higher values allow the animation to deviate more whereas lowe values keep the animation more consistent.",
+        description="(motion_cfg_scale): Influences how strongly the animation will match the original image. Higher values allow the animation to deviate more whereas lowe values keep the animation more consistent.",
         ge=0,
         le=10,
     )
@@ -73,10 +73,13 @@ def get_image_for_prompt(params: PlaygroundV2Params, seed: Optional[int] = None)
             "height": 768,
             "prompt": params.prompt,
             "scheduler": params.sampler.value,
-            "guidance_scale": params.cfg_scale + 0.00001,
+            "guidance_scale": params.cfg_scale,
             "apply_watermark": False,
             "negative_prompt": params.negative_prompt,
             "num_inference_steps": 50,
+
+            # Unfortunately the safety checker flags everything
+            # "disable_safety_checker": True,
 
             # dpo only
             # "refine": "expert_ensemble_refiner",

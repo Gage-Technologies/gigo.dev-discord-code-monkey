@@ -1,40 +1,16 @@
-import json
 import os
-from openai import OpenAI, Stream
+import anthropic
 import tiktoken
 from database import Message
-from const import HERMES_SYSTEM_MESSAGE
-from typing import Any, Iterator, List
-from transformers import AutoTokenizer
-
-from images.sd3 import SD3Params
-
-
-DEEP_INFRA_SYSTEM_MESSAGE_FORMATTED = HERMES_SYSTEM_MESSAGE.replace(
-    "<GEN_PARAMS>", SD3Params.schema_json(indent=2)
-)
+from const import HERMES2_SYSTEM_MESSAGE
+from typing import Iterator, List
 
 
 class LLM:
     def __init__(self) -> None:
-        self.tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-v0.1")
-        self.client = OpenAI(
-            api_key=os.environ["DEEPINFRA_API_KEY"],
-            base_url="https://api.deepinfra.com/v1/openai",
-        )
-
-    @staticmethod
-    def get_system_message() -> str:
-        schema = SD3Params.schema_json(indent=2)
-        lines = schema.split("\n")
-        formatted_schema = []
-        for i, l in enumerate(lines):
-            if i != 0:
-                l = "  " + l
-            formatted_schema.append(l)
-
-        return HERMES_SYSTEM_MESSAGE.replace(
-            "<GEN_PARAMS>", "\n".join(formatted_schema)
+        self.tokenizer = tiktoken.encoding_for_model("gpt-3.5-turbo")
+        self.client = anthropic.Anthropic(
+            api_key=os.environ.get("ANTHROPIC_API_KEY"),
         )
 
     def preprocess_messages(self, messages: List[Message]) -> List[dict]:
@@ -43,7 +19,7 @@ class LLM:
 
         # Initialize the token size to the length of the
         # system message
-        token_size = len(self.tokenizer.encode(DEEP_INFRA_SYSTEM_MESSAGE_FORMATTED))
+        token_size = len(self.tokenizer.encode(HERMES2_SYSTEM_MESSAGE))
 
         # Iterate over the messages in reverse order
         # formatting them into a list of ChatCompletionMessage
@@ -55,13 +31,13 @@ class LLM:
             # If the token size of the message is greater than
             # the maximum context size of the model then we
             # will skip the message
-            if message_token_size > 2048:
+            if message_token_size > 4096:
                 continue
 
             # If the token size of the message is greater than
             # the remaining token size then we will skip the
             # message
-            if message_token_size + token_size > 8192:
+            if message_token_size > 8192 - token_size:
                 continue
 
             # Add the message to the chat messages
@@ -85,7 +61,7 @@ class LLM:
             0,
             {
                 "role": "system",
-                "content": DEEP_INFRA_SYSTEM_MESSAGE_FORMATTED,
+                "content": HERMES2_SYSTEM_MESSAGE,
             },
         )
 
@@ -95,20 +71,18 @@ class LLM:
         # Preprocess the chat messages
         chat_messages = self.preprocess_messages(messages)
 
-        print(json.dumps(chat_messages, indent=2), flush=True)
-
         # Create a new chat completion to stream the response from the model
-        completion = self.client.chat.completions.create(
-            messages=chat_messages,
-            stream=True,
-            temperature=0.7,
-            top_p=0.3,
-            model="mistralai/Mixtral-8x7B-Instruct-v0.1",
+        completion = self.client.messages.create(
+            messages=chat_messages[1:],
+            temperature=1,
+            top_p=0.85,
+            system=chat_messages[0]["content"],
+            # model="claude-3-sonnet-20240229",
+            model="claude-3-haiku-20240307",
+            max_tokens=4000
         )
 
-        # Iterate over the chat completion to get the response
-        # from the model one token at a time
-        for t in completion:
-            if t.choices[0].delta.content is None:
-                continue
-            yield t.choices[0].delta.content
+        print("Completion: ", completion)
+
+        yield completion.content[0].text
+
