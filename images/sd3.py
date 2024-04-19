@@ -85,6 +85,9 @@ def get_image_for_prompt(
     )
     if response.status_code == 200:
         return response.json()["image"]
+    elif response.status_code == 403:
+        # handle innapropriate content
+        return "<|IAC|>"
     else:
         raise Exception(f"Error in API call: {response.text}")
 

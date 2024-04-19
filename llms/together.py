@@ -10,11 +10,6 @@ from transformers import AutoTokenizer
 from images.sd3 import SD3Params
 
 
-TOGETHER_SYSTEM_MESSAGE_FORMATTED = HERMES2_SYSTEM_MESSAGE.replace(
-    "<GEN_PARAMS>", SD3Params.schema_json(indent=2)
-)
-
-
 class LLM:
     def __init__(self) -> None:
         self.tokenizer = AutoTokenizer.from_pretrained("mistral-community/Mixtral-8x22B-v0.1")
@@ -25,17 +20,7 @@ class LLM:
 
     @staticmethod
     def get_system_message() -> str:
-        schema = SD3Params.schema_json(indent=2)
-        lines = schema.split("\n")
-        formatted_schema = []
-        for i, l in enumerate(lines):
-            if i != 0:
-                l = "  " + l
-            formatted_schema.append(l)
-
-        return HERMES2_SYSTEM_MESSAGE.replace(
-            "<GEN_PARAMS>", "\n".join(formatted_schema)
-        )
+        return HERMES2_SYSTEM_MESSAGE
 
     def preprocess_messages(self, messages: List[Message]) -> List[dict]:
         # Initialize the chat messages with an empty list
@@ -43,7 +28,7 @@ class LLM:
 
         # Initialize the token size to the length of the
         # system message
-        token_size = len(self.tokenizer.encode(TOGETHER_SYSTEM_MESSAGE_FORMATTED))
+        token_size = len(self.tokenizer.encode(HERMES2_SYSTEM_MESSAGE))
 
         # Iterate over the messages in reverse order
         # formatting them into a list of ChatCompletionMessage
@@ -61,7 +46,7 @@ class LLM:
             # If the token size of the message is greater than
             # the remaining token size then we will skip the
             # message
-            if message_token_size + token_size > 3500:
+            if message_token_size + token_size > 8000:
                 continue
 
             # Add the message to the chat messages
@@ -85,7 +70,7 @@ class LLM:
             0,
             {
                 "role": "system",
-                "content": TOGETHER_SYSTEM_MESSAGE_FORMATTED,
+                "content": HERMES2_SYSTEM_MESSAGE,
             },
         )
 

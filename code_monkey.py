@@ -7,11 +7,14 @@ import sys
 import time
 import re
 from datetime import datetime
+from token import OP
 import discord
+from numpy import byte
 
 import requests
 from discord import ClientUser, Message as DiscordMessage
 from database import Database, Chat, Message
+from gigo import ByteSearchParams, ChallengeSearchParams, JourneyUnitSearchParams, search_bytes, search_challenges, search_journey_units
 from images.stablility_ai import (
     generate_video_from_image
 )
@@ -19,9 +22,9 @@ from images.sd3 import (
     SD3Params,
     get_image_for_prompt
 )
-from llms.deep_infra import LLM
+from llms.together import LLM
 
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 
 RATE_LIMIT = int(os.environ.get("RATE_LIMIT"))
@@ -112,21 +115,38 @@ async def handle_cm_message(
 
     print("History: ", [x.id for x in messages])
 
-    # Use the LM to generate a response
-    completion = lm.chat_completion(messages)
-
-    # Iterate over the completion adding each token to the response
     response = ""
-    for token in completion:
-        # Tokens contain spacing between words so we just add the text
-        # directly to the response
-        response += token
+    image_prompt: Optional[SD3Params] = None
+    challenge_search: Optional[ChallengeSearchParams] = None
+    byte_search: Optional[ByteSearchParams] = None
+    journey_unit_search: Optional[JourneyUnitSearchParams] = None
+    for i in range(3):
+        response = get_model_response(lm, messages)
 
-    print("Raw response: ", response, flush=True)
+        # Post process the message content by removing ### Server Name: ... from the beginning if it exsits using regex
+        original_response = response
+        response, image_prompt, challenge_search, byte_search, journey_unit_search = post_process_response(response)
 
-    # Post process the message content by removing ### Server Name: ... from the beginning if it exsits using regex
-    original_response = response
-    response, image_prompt = post_process_response(response)
+        context = ""
+        if i < 2 and (challenge_search or byte_search or journey_unit_search):
+            if challenge_search is not None:
+                challenge_content = search_challenges(challenge_search)
+                context += f"<function_call>\n{json.dumps({'name': 'search_challenges', 'arguments': json.loads(challenge_search.json())})}\n</function_call>\n"
+                context += f"<function_response>\n{json.dumps({'name': 'search_challenges', 'content': challenge_content})}\n</function_response>\n"
+            if byte_search is not None:
+                byte_content = search_bytes(byte_search)
+                context += f"<function_call>\n{json.dumps({'name': 'search_bytes', 'arguments': json.loads(byte_search.json())})}\n</function_call>\n"
+                context += f"<function_response>\n{json.dumps({'name': 'search_bytes', 'content': byte_content})}\n</function_response>\n"
+            if journey_unit_search is not None:
+                journey_unit_content = search_journey_units(journey_unit_search)
+                context += f"<function_call>\n{json.dumps({'name': 'search_journey_units', 'arguments': json.loads(journey_unit_search.json())})}\n</function_call>\n"
+                context += f"<function_response>\n{json.dumps({'name': 'search_journey_units', 'content': journey_unit_content})}\n</function_response>\n"
+        
+        if len(context) > 0:
+            messages[-1].content = f"--- Start of Context ---\n{context}\n--- End of Context ---\n\n{messages[-1].content}"
+            continue
+        break
+
 
     # retrieve the last image if we are editing
     last_image = None
@@ -231,6 +251,21 @@ async def handle_cm_message(
         await partialMessage.edit(content=response)
 
 
+def get_model_response(lm: LLM, messages: List[Message]):
+    # Use the LM to generate a response
+    completion = lm.chat_completion(messages)
+
+    # Iterate over the completion adding each token to the response
+    response = ""
+    for token in completion:
+        # Tokens contain spacing between words so we just add the text
+        # directly to the response
+        response += token
+
+    print("Raw response: ", response, flush=True)
+    return response
+
+
 def upload_to_pastebin(content: str) -> str:
     """
     Upload the provided content to Pastebin and return the URL.
@@ -253,7 +288,7 @@ def upload_to_pastebin(content: str) -> str:
         return None
 
 
-def post_process_response(response: str) -> Tuple[str, Optional[SD3Params]]:
+def post_process_response(response: str) -> Tuple[str, Optional[SD3Params], Optional[ChallengeSearchParams], Optional[ByteSearchParams], Optional[JourneyUnitSearchParams]]:
     """
     Clean the output of the llm
     """
@@ -267,23 +302,17 @@ def post_process_response(response: str) -> Tuple[str, Optional[SD3Params]]:
     )
     response = response.replace("[INST]", "").replace("[/INST]", "").strip()
 
-    # handle image generation
-    prompt = None
-    if response.startswith("<image>"):
-        # extract the prompt between the <image> tags
-        start = response.find("<image>") + len("<image>")
-        end = response.find("</image>")
-        prompt = response[start:end].strip()
-
-        if end != -1:
-            # get the content following the </image> tag
-            end += len("</image>")
-        response = response[end:].strip()
-
     # regex to parse a function call in the message
     pattern = r"<function(?:_call)?>\s*({.*?})\s*</function(?:_call)?>"
-    match = re.search(pattern, response, re.DOTALL)
-    if match:
+    matches = re.finditer(pattern, response, re.DOTALL)
+
+    outputs = {
+        "image_gen": None,
+        "challenge_search": None,
+        "byte_search": None,
+        "journey_unit_search": None,
+    }
+    for match in matches:
         call = match.group(1).strip()
         print("Extracted Call: ", call, flush=True)
         response = re.sub(pattern, "", response, flags=re.DOTALL).strip()
@@ -291,33 +320,99 @@ def post_process_response(response: str) -> Tuple[str, Optional[SD3Params]]:
         if call.count("{") > call.count("}"):
             call += (call.count("{") - call.count("}")) * "}"
 
-        # first try to parse it with pydantic for advanced options
         try:
             func_call = json.loads(call)
-            assert func_call["name"] == "generate_image"
-            prompt = SD3Params(**func_call["arguments"])
-            return response, prompt
         except Exception as e:
-            print("ERROR: failed to parse image gen as pydantic: ", e, flush=True)
-            pass
+            print("ERROR: failed to load call as json: ", e, flush=True)
 
-        try:
-            func_call = json.loads(call)
-            assert func_call["name"] == "generate_image"
-            prompt = func_call["arguments"]["prompt"]
-            return response, SD3Params(prompt=prompt)
-        except Exception as e:
-            print("ERROR: failed to parse image gen: ", e, flush=True)
-            pass
-
-    try:
-        func_call = json.loads(response)
-        p = func_call["params"]["prompt"]
-        prompt = SD3Params(prompt=p)
-    except Exception:
-        pass
+        if func_call["name"] == "generate_image":
+            outputs["image_gen"] = parse_image_gen(func_call)
+        if func_call["name"] == "search_challenges":
+            outputs["challenge_search"] = parse_search_challenges(func_call)
+        if func_call["name"] == "search_bytes":
+            outputs["byte_search"] = parse_search_bytes(func_call)
+        if func_call["name"] == "search_journey_units":
+            outputs["journey_unit_search"] = parse_search_journey_units(func_call)
 
     # remove any empty codeblocks
     response = re.sub(r"```(:?.+)?\n```", "", response)
 
-    return response, prompt
+    return response, outputs["image_gen"], outputs["challenge_search"], outputs["byte_search"], outputs["journey_unit_search"]
+
+
+def parse_image_gen(func_call: dict) -> Optional[SD3Params]:
+    # first try to parse it with pydantic for advanced options
+    try:
+        assert func_call["name"] == "generate_image"
+        return SD3Params(**func_call["arguments"])
+    except Exception as e:
+        print("ERROR: failed to parse image gen as pydantic: ", e, flush=True)
+        pass
+
+    try:
+        assert func_call["name"] == "generate_image"
+        prompt = func_call["arguments"]["prompt"]
+        return SD3Params(prompt=prompt)
+    except Exception as e:
+        print("ERROR: failed to parse image gen: ", e, flush=True)
+        pass
+
+    return None
+
+def parse_search_challenges(func_call: dict) -> Optional[ChallengeSearchParams]:
+    # first try to parse it with pydantic for advanced options
+    try:
+        assert func_call["name"] == "search_challenges"
+        prompt = ChallengeSearchParams(**func_call["arguments"])
+        return prompt
+    except Exception as e:
+        print("ERROR: failed to parse challenge search as pydantic: ", e, flush=True)
+        pass
+
+    try:
+        assert func_call["name"] == "search_challenges"
+        return func_call["arguments"]["query"]
+    except Exception as e:
+        print("ERROR: failed to parse challenge search: ", e, flush=True)
+        pass
+
+    return None
+
+
+def parse_search_bytes(func_call: dict) -> Optional[ByteSearchParams]:
+    # first try to parse it with pydantic for advanced options
+    try:
+        assert func_call["name"] == "search_bytes"
+        return ByteSearchParams(**func_call["arguments"])
+    except Exception as e:
+        print("ERROR: failed to parse byte search as pydantic: ", e, flush=True)
+        pass
+
+    try:
+        assert func_call["name"] == "search_bytes"
+        prompt = func_call["arguments"]["query"]
+        return ByteSearchParams(query=prompt)
+    except Exception as e:
+        print("ERROR: failed to parse byte search: ", e, flush=True)
+        pass
+
+    return None
+
+def parse_search_journey_units(func_call: dict) -> Optional[JourneyUnitSearchParams]:
+    # first try to parse it with pydantic for advanced options
+    try:
+        assert func_call["name"] == "search_journey_units"
+        return JourneyUnitSearchParams(**func_call["arguments"])
+    except Exception as e:
+        print("ERROR: failed to parse journey unit search as pydantic: ", e, flush=True)
+        pass
+
+    try:
+        assert func_call["name"] == "search_journey_units"
+        prompt = func_call["arguments"]["query"]
+        return JourneyUnitSearchParams(query=prompt)
+    except Exception as e:
+        print("ERROR: failed to parse journey unit search: ", e, flush=True)
+        pass
+
+    return None
