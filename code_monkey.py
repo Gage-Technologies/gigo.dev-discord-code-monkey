@@ -56,7 +56,7 @@ async def handle_cm_message(
         return
 
     # prepend the username
-    content = f"### Server Name: {message.author.display_name}\n\n{content}"
+    content = f"### Server Name: {message.author.display_name}\n### Server Roles: {[x.name for x in message.author.roles]}\n\n{content}"
 
     # Retrieve the last chat for this channel from the database
     chat = db.get_last_channel_chat(0, message.channel.id)

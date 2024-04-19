@@ -4,7 +4,7 @@ from openai import OpenAI, Stream
 import tiktoken
 from database import Message
 from const import HERMES2_SYSTEM_MESSAGE
-from typing import Any, Iterator, List
+from typing import Any, Iterator, List, Tuple
 from transformers import AutoTokenizer
 
 from images.sd3 import SD3Params
@@ -12,7 +12,7 @@ from images.sd3 import SD3Params
 
 class LLM:
     def __init__(self) -> None:
-        self.tokenizer = AutoTokenizer.from_pretrained("mistral-community/Mixtral-8x22B-v0.1")
+        self.tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3-70B-Instruct")
         self.client = OpenAI(
             api_key=os.environ["TOGETHER_API_KEY"],
             base_url="https://api.together.xyz",
@@ -22,7 +22,7 @@ class LLM:
     def get_system_message() -> str:
         return HERMES2_SYSTEM_MESSAGE
 
-    def preprocess_messages(self, messages: List[Message]) -> List[dict]:
+    def preprocess_messages(self, messages: List[Message]) -> Tuple[List[dict], int]:
         # Initialize the chat messages with an empty list
         chat_messages = []
 
@@ -46,7 +46,7 @@ class LLM:
             # If the token size of the message is greater than
             # the remaining token size then we will skip the
             # message
-            if message_token_size + token_size > 8000:
+            if message_token_size + token_size > 7000:
                 continue
 
             # Add the message to the chat messages
@@ -74,11 +74,11 @@ class LLM:
             },
         )
 
-        return chat_messages
+        return chat_messages, 8100-token_size
 
     def chat_completion(self, messages: List[Message]) -> Iterator[str]:
         # Preprocess the chat messages
-        chat_messages = self.preprocess_messages(messages)
+        chat_messages, max_tokens = self.preprocess_messages(messages)
 
         print(json.dumps(chat_messages, indent=2), flush=True)
 
@@ -88,8 +88,8 @@ class LLM:
             stream=True,
             temperature=0.7,
             top_p=0.95,
-            max_tokens=4000,
-            model="mistralai/Mixtral-8x22B-Instruct-v0.1",
+            max_tokens=max_tokens,
+            model="meta-llama/Llama-3-70b-chat-hf",
         )
 
         # Iterate over the chat completion to get the response
