@@ -25,6 +25,10 @@ class Chat(BaseModel):
     created_at: datetime
     channel_id: int
 
+class AdminInstruction(BaseModel):
+    id: int
+    admin_instruction: str
+
 
 class Database:
     def __init__(self, uri: str, db_name: str) -> None:
@@ -32,11 +36,17 @@ class Database:
         self.db: MongoDatabase = self.client[db_name]
         self.chats: Collection = self.db['chats']
         self.messages: Collection = self.db['messages']
+        self.admin_instructions: Collection = self.db['admin_instructions']
 
     def create_chat(self, chat: Chat) -> Optional[int]:
         chat_dict = chat.dict()
         result = self.chats.insert_one(chat_dict)
         return chat.id if result and result.inserted_id else None
+    
+    def create_admin_instruction(self, admin_instruction: AdminInstruction) -> Optional[int]:
+        admin_instruction_dict = admin_instruction.dict()
+        result = self.admin_instructions.insert_one(admin_instruction_dict)
+        return admin_instruction.id if result and result.inserted_id else None
 
     def get_chat(self, chat_id: int) -> Optional[Chat]:
         chat = self.chats.find_one({'id': chat_id})
@@ -49,6 +59,10 @@ class Database:
         return self.messages.find({'id': {"$lte": last_id}}).sort(
             [('timestamp', 1)]
         )
+
+    def get_admin_instructions(self) -> Optional[AdminInstruction]:
+        admin_instructions = self.admin_instructions.find()
+        return [AdminInstruction(**x) for x in admin_instructions] if admin_instructions else None
 
     def get_last_channel_chat(
         self, author_id: int, channel_id: int

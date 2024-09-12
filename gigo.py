@@ -6,51 +6,18 @@ import json
 from pydantic import BaseModel, Field
 
 class ProgrammingLanguage(Enum):
-    AnyProgrammingLanguage = "anyprogramminglanguage"
-    CustomProgrammingLanguage = "customprogramminglanguage"
     Java = "java"
     JavaScript = "javascript"
     TypeScript = "typescript"
     Python = "python"
     Go = "go"
-    Ruby = "ruby"
     Cpp = "cpp"
     C = "c"
     Csharp = "csharp"
-    ObjectiveC = "objectivec"
-    Swift = "swift"
-    PHP = "php"
     Rust = "rust"
-    Kotlin = "kotlin"
-    Dart = "dart"
-    Scala = "scala"
-    CoffeeScript = "coffeescript"
-    Haskell = "haskell"
-    Lua = "lua"
-    Clojure = "clojure"
-    Perl = "perl"
-    Shell = "shell"
-    Elixir = "elixir"
-    Assembly = "assembly"
-    Groovy = "groovy"
-    Html = "html"
-    Julia = "julia"
-    OCaml = "ocaml"
-    R = "r"
-    Ada = "ada"
-    Erlang = "erlang"
-    Matlab = "matlab"
-    SQL = "sql"
-    Cobol = "cobol"
-    Lisp = "lisp"
-    HCL = "hcl"
 
     def to_int(self) -> int:
-        if self == ProgrammingLanguage.AnyProgrammingLanguage:
-            return 0
-        elif self == ProgrammingLanguage.CustomProgrammingLanguage:
-            return 1
-        elif self == ProgrammingLanguage.Java:
+        if self == ProgrammingLanguage.Java:
             return 2
         elif self == ProgrammingLanguage.JavaScript:
             return 3
@@ -60,112 +27,29 @@ class ProgrammingLanguage(Enum):
             return 5
         elif self == ProgrammingLanguage.Go:
             return 6
-        elif self == ProgrammingLanguage.Ruby:
-            return 7
         elif self == ProgrammingLanguage.Cpp:
             return 8
         elif self == ProgrammingLanguage.C:
             return 9
         elif self == ProgrammingLanguage.Csharp:
             return 10
-        elif self == ProgrammingLanguage.ObjectiveC:
-            return 11
-        elif self == ProgrammingLanguage.Swift:
-            return 12
-        elif self == ProgrammingLanguage.PHP:
-            return 13
         elif self == ProgrammingLanguage.Rust:
             return 14
-        elif self == ProgrammingLanguage.Kotlin:
-            return 15
-        elif self == ProgrammingLanguage.Dart:
-            return 16
-        elif self == ProgrammingLanguage.Scala:
-            return 17
-        elif self == ProgrammingLanguage.CoffeeScript:
-            return 18
-        elif self == ProgrammingLanguage.Haskell:
-            return 19
-        elif self == ProgrammingLanguage.Lua:
-            return 20
-        elif self == ProgrammingLanguage.Clojure:
-            return 21
-        elif self == ProgrammingLanguage.Perl:
-            return 22
-        elif self == ProgrammingLanguage.Shell:
-            return 23
-        elif self == ProgrammingLanguage.Elixir:
-            return 24
-        elif self == ProgrammingLanguage.Assembly:
-            return 25
-        elif self == ProgrammingLanguage.Groovy:
-            return 26
-        elif self == ProgrammingLanguage.Html:
-            return 27
-        elif self == ProgrammingLanguage.Julia:
-            return 28
-        elif self == ProgrammingLanguage.OCaml:
-            return 29
-        elif self == ProgrammingLanguage.R:
-            return 30
-        elif self == ProgrammingLanguage.Ada:
-            return 31
-        elif self == ProgrammingLanguage.Erlang:
-            return 32
-        elif self == ProgrammingLanguage.Matlab:
-            return 33
-        elif self == ProgrammingLanguage.SQL:
-            return 34
-        elif self == ProgrammingLanguage.Cobol:
-            return 35
-        elif self == ProgrammingLanguage.Lisp:
-            return 36
-        elif self == ProgrammingLanguage.HCL:
-            return 37
         else:
             raise ValueError("Invalid ProgrammingLanguage")
 
     @staticmethod
     def from_int(x: int) -> 'ProgrammingLanguage':
         mapping = {
-            0: ProgrammingLanguage.AnyProgrammingLanguage,
-            1: ProgrammingLanguage.CustomProgrammingLanguage,
             2: ProgrammingLanguage.Java,
             3: ProgrammingLanguage.JavaScript,
             4: ProgrammingLanguage.TypeScript,
             5: ProgrammingLanguage.Python,
             6: ProgrammingLanguage.Go,
-            7: ProgrammingLanguage.Ruby,
             8: ProgrammingLanguage.Cpp,
             9: ProgrammingLanguage.C,
             10: ProgrammingLanguage.Csharp,
-            11: ProgrammingLanguage.ObjectiveC,
-            12: ProgrammingLanguage.Swift,
-            13: ProgrammingLanguage.PHP,
             14: ProgrammingLanguage.Rust,
-            15: ProgrammingLanguage.Kotlin,
-            16: ProgrammingLanguage.Dart,
-            17: ProgrammingLanguage.Scala,
-            18: ProgrammingLanguage.CoffeeScript,
-            19: ProgrammingLanguage.Haskell,
-            20: ProgrammingLanguage.Lua,
-            21: ProgrammingLanguage.Clojure,
-            22: ProgrammingLanguage.Perl,
-            23: ProgrammingLanguage.Shell,
-            24: ProgrammingLanguage.Elixir,
-            25: ProgrammingLanguage.Assembly,
-            26: ProgrammingLanguage.Groovy,
-            27: ProgrammingLanguage.Html,
-            28: ProgrammingLanguage.Julia,
-            29: ProgrammingLanguage.OCaml,
-            30: ProgrammingLanguage.R,
-            31: ProgrammingLanguage.Ada,
-            32: ProgrammingLanguage.Erlang,
-            33: ProgrammingLanguage.Matlab,
-            34: ProgrammingLanguage.SQL,
-            35: ProgrammingLanguage.Cobol,
-            36: ProgrammingLanguage.Lisp,
-            37: ProgrammingLanguage.HCL
         }
         if x in mapping:
             return mapping[x]
@@ -191,43 +75,7 @@ class ProgrammingLanguage(Enum):
             "cs": ProgrammingLanguage.Csharp,
             "c#": ProgrammingLanguage.Csharp,
             "java": ProgrammingLanguage.Java,
-            "kotlin": ProgrammingLanguage.Kotlin,
-            "dart": ProgrammingLanguage.Dart,
-            "ruby": ProgrammingLanguage.Ruby,
-            "rb": ProgrammingLanguage.Ruby,
-            "php": ProgrammingLanguage.PHP,
-            "swift": ProgrammingLanguage.Swift,
             "c": ProgrammingLanguage.C,
-            "scala": ProgrammingLanguage.Scala,
-            "coffeescript": ProgrammingLanguage.CoffeeScript,
-            "haskell": ProgrammingLanguage.Haskell,
-            "lua": ProgrammingLanguage.Lua,
-            "clojure": ProgrammingLanguage.Clojure,
-            "perl": ProgrammingLanguage.Perl,
-            "shell": ProgrammingLanguage.Shell,
-            "sh": ProgrammingLanguage.Shell,
-            "bash": ProgrammingLanguage.Shell,
-            "zsh": ProgrammingLanguage.Shell,
-            "elixir": ProgrammingLanguage.Elixir,
-            "assembly": ProgrammingLanguage.Assembly,
-            "groovy": ProgrammingLanguage.Groovy,
-            "html": ProgrammingLanguage.Html,
-            "julia": ProgrammingLanguage.Julia,
-            "ocaml": ProgrammingLanguage.OCaml,
-            "r": ProgrammingLanguage.R,
-            "ada": ProgrammingLanguage.Ada,
-            "erlang": ProgrammingLanguage.Erlang,
-            "matlab": ProgrammingLanguage.Matlab,
-            "sql": ProgrammingLanguage.SQL,
-            "sqlite": ProgrammingLanguage.SQL,
-            "mysql": ProgrammingLanguage.SQL,
-            "postgresql": ProgrammingLanguage.SQL,
-            "oracle": ProgrammingLanguage.SQL,
-            "mssql": ProgrammingLanguage.SQL,
-            "sqlserver": ProgrammingLanguage.SQL,
-            "cobol": ProgrammingLanguage.Cobol,
-            "lisp": ProgrammingLanguage.Lisp,
-            "hcl": ProgrammingLanguage.HCL,
         }
         if x.lower() in mapping:
             return mapping[x.lower()]
@@ -363,7 +211,7 @@ def search_journey_units(params: JourneyUnitSearchParams) -> str:
     
     data = [
         {
-            "url": f"https://www.gigo.dev/journey/main",
+            "url": f"https://www.gigo.dev/journey/info/{x['_id']}",
             "image": f"https://api.cdn.gigo.dev/static/junit/t/{x['_id']}",
             "name": x['name'],
             "description": x['description'],

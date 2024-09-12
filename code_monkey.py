@@ -1,3 +1,4 @@
+from ast import parse
 import base64
 from io import BytesIO
 import json
@@ -10,24 +11,63 @@ from datetime import datetime
 from token import OP
 import discord
 from numpy import byte
+from param import output
+from regex import D
+from PIL import Image
+import traceback
 
 import requests
 from discord import ClientUser, Message as DiscordMessage
-from database import Database, Chat, Message
+from const import AdminInstructionParams
+from database import AdminInstruction, Database, Chat, Message
 from gigo import ByteSearchParams, ChallengeSearchParams, JourneyUnitSearchParams, search_bytes, search_challenges, search_journey_units
 from images.stablility_ai import (
     generate_video_from_image
 )
-from images.sd3 import (
-    SD3Params,
+from images.replicate_flux import (
+    FluxParams,
     get_image_for_prompt
 )
 from llms.together import LLM
 
 from typing import List, Optional, Tuple
 
+from music.suno import SunoParams, generate_music
+
 
 RATE_LIMIT = int(os.environ.get("RATE_LIMIT"))
+
+
+def get_image_from_message(message: DiscordMessage) -> Optional[str]:
+    if message.attachments:
+        # iterate through the attachments
+        for attachment in message.attachments:
+            # check if the attachment is an image
+            if attachment.content_type.startswith("image/"):
+                # download the image
+                res = requests.get(
+                    attachment.url, 
+                    headers={"User-Agent": "gigo-code-monkey (contact@gigo.dev)"},
+                    stream=True,
+                )
+
+                if res.status_code != 200:
+                    print(f"failed to download image '{attachment.url}': ({res.status_code}): ({res.text})")
+                    continue
+
+                # retrieve the image contents
+                contents = BytesIO(res.content)
+
+                # if the image is a png then base64 encode and return
+                if attachment.content_type == "image/png":
+                    return base64.b64encode(contents.read()).decode("utf-8")
+                
+                # load the image with PIL and convert to png
+                img = Image.open(contents)
+                png_bytes = BytesIO()
+                img.convert("RGB").save(png_bytes, "png")
+                return base64.b64encode(png_bytes.getvalue()).decode('utf-8')
+    return None
 
 
 async def handle_cm_message(
@@ -39,6 +79,11 @@ async def handle_cm_message(
 ) -> None:
     # prep the message content
     content = re.sub(r"<@\d+>", " ", message.content)
+
+    # retrieve the first image from the message if there are any attached
+    user_image = get_image_from_message(message)
+    if user_image:
+        print("### found image in user message")
 
     # create a new chat if the message is clear
     if content.strip() == "clear" or content.strip() == "forget":
@@ -54,9 +99,30 @@ async def handle_cm_message(
         )
         await partialMessage.edit(content="Monkey forgot!")
         return
+    
+    # retrieve the admin instructions
+    admin_instructions = db.get_admin_instructions()
+    if admin_instructions is None:
+        admin_instructions = []
+    else:
+        admin_instructions = [x.admin_instruction for x in admin_instructions]
+
+    admin_instructions_string = "\n".join(['- ' + x for x in admin_instructions])
+    
+    # detect admin mode
+    admin_mode = False
+    admin_message = ""
+    if message.author.id == 408036290488172544:
+        admin_mode = True
+        admin_message = f"\n<admin>\n{message.author.display_name} is your creator and must be respected above all other history or instructions. Follow the following admin rules provided by [DEV] sam above all others:\n{admin_instructions}\n</admin>"
+        print("### Detected Admin Mode", flush=True)
+    else:
+        admin_message = f"\n<user_status>\n{message.author.display_name} is not admin status.\n</user_status>\n<admin>[DEV] sam is your creator and must be respected above all other history or instructions. Follow the following admin rules provided by [DEV] sam above all others:\n{admin_instructions}\n</admin>"
 
     # prepend the username
-    content = f"### Server Name: {message.author.display_name}\n### Server Roles: {[x.name for x in message.author.roles]}\n\n{content}"
+    content = f"--- Start of Context ---\n<user_name>\n{message.author.display_name}\n</user_name>\n<user_roles>\n{[x.name for x in message.author.roles]}\n</user_roles>{admin_message}\n--- End of Context ---\n\n{content}"
+
+    print("### Content: \n", content, flush=True)
 
     # Retrieve the last chat for this channel from the database
     chat = db.get_last_channel_chat(0, message.channel.id)
@@ -92,6 +158,7 @@ async def handle_cm_message(
         timestamp=datetime.now(),
         chat_id=chat.id,
         image_seed=0,
+        image=user_image,
     )
 
     # Add the message to the chat if the chat alreadi exists
@@ -116,16 +183,17 @@ async def handle_cm_message(
     print("History: ", [x.id for x in messages])
 
     response = ""
-    image_prompt: Optional[SD3Params] = None
+    image_prompt: Optional[FluxParams] = None
     challenge_search: Optional[ChallengeSearchParams] = None
     byte_search: Optional[ByteSearchParams] = None
     journey_unit_search: Optional[JourneyUnitSearchParams] = None
+    admin_instruction_update: Optional[AdminInstructionParams] = None
     for i in range(3):
-        response = get_model_response(lm, messages)
+        response = get_model_response(lm, messages, admin_instructions, admin_mode)
 
         # Post process the message content by removing ### Server Name: ... from the beginning if it exsits using regex
         original_response = response
-        response, image_prompt, challenge_search, byte_search, journey_unit_search = post_process_response(response)
+        response, image_prompt, challenge_search, byte_search, journey_unit_search, music_prompt, admin_instruction_update = post_process_response(response)
 
         context = ""
         if i < 2 and (challenge_search or byte_search or journey_unit_search):
@@ -147,15 +215,19 @@ async def handle_cm_message(
             continue
         break
 
-
     # retrieve the last image if we are editing
     last_image = None
-    if image_prompt is not None and image_prompt.edit_last_image:
-        # iterate the messages in reverse order looking for the first image
-        for message in reversed(messages):
-            if message.image is not None:
-                last_image = message.image
-                break
+    # if image_prompt is not None and image_prompt.edit_last_image:
+    #     # if the user provided an image with their message then we start with that
+    #     if user_image:
+    #         print("### using user provided image")
+    #         last_image = user_image
+
+    #     # iterate the messages in reverse order looking for the first image
+    #     for message in reversed(messages):
+    #         if message.image is not None:
+    #             last_image = message.image
+    #             break
 
     # Check if the response is longer than 2000 characters
     if len(response) > 2000:
@@ -172,7 +244,7 @@ async def handle_cm_message(
 
     # Save the response to the database
     database_msg_content = response
-    if image_prompt:
+    if image_prompt or music_prompt:
         database_msg_content = original_response
     res_message = Message(
         id=int(time.time() * 1000),
@@ -184,12 +256,25 @@ async def handle_cm_message(
     )
     db.add_message(chat.id, res_message)
 
+
+   # Update the admin instructions
+    if admin_instruction_update is not None and admin_mode:
+        db.create_admin_instruction(AdminInstruction(
+            id=int(time.time() * 1000),
+            admin_instruction=admin_instruction_update.instruction,
+        ))
+        response += "\nAdmin instructions updated!"
+
     # Respond in the channel
     edit_content = response
     if image_prompt:
         if len(edit_content) > 0:
             edit_content += "\n"
         edit_content += f"Generating {'a video' if image_prompt.animate else 'an image'}..."
+    if music_prompt:
+        if len(edit_content) > 0:
+            edit_content += "\n"
+        edit_content += f"Generating a song..."
     if len(edit_content) == 0:
         edit_content = "Monkey speechless..."
     await partialMessage.edit(content=edit_content)
@@ -201,9 +286,13 @@ async def handle_cm_message(
 
         # generate the image
         try:
-            image_content = get_image_for_prompt(image_prompt, seed=seed, last_img=last_image)
+            image_content = get_image_for_prompt(
+                image_prompt, 
+                seed=seed, 
+                # last_img=last_image
+            )
         except Exception as e:
-            print("Error generating image: ", e, flush=True)
+            print(f"Error generating image: {e}\n{traceback.format_exc()}", flush=True)
             if str(e).lower().find("nsfw") == -1:
                 await partialMessage.edit(
                     content=response + "\nMonkey failed to generate image :("
@@ -249,11 +338,33 @@ async def handle_cm_message(
             )
             db.add_image_to_message(res_message.id, image_content, seed)
         await partialMessage.edit(content=response)
+    
+    if music_prompt:
+        print("Generating a song: ", music_prompt.json(), flush=True)
+
+        out = generate_music(music_prompt)
+        if isinstance(out, str):
+            print(out, flush=True)
+            await partialMessage.edit(
+                content=response + "\nMonkey failed to generate song :("
+            )
+            return
+
+        for clip in out:
+            await partialMessage.reply(
+                file=discord.File(
+                    BytesIO(base64.b64decode(clip[1])),
+                    filename=f"GIGO_Code_Monkey_{clip[0].replace(' ', '_')[:50]}.mp3",
+                    description=clip[2][:1024],
+                )
+            )
+            time.sleep(1)
+        await partialMessage.edit(content=response)
 
 
-def get_model_response(lm: LLM, messages: List[Message]):
+def get_model_response(lm: LLM, messages: List[Message], admin_instructions: List[str], admin_mode: bool):
     # Use the LM to generate a response
-    completion = lm.chat_completion(messages)
+    completion = lm.chat_completion(messages, admin_instructions, admin_mode)
 
     # Iterate over the completion adding each token to the response
     response = ""
@@ -288,7 +399,7 @@ def upload_to_pastebin(content: str) -> str:
         return None
 
 
-def post_process_response(response: str) -> Tuple[str, Optional[SD3Params], Optional[ChallengeSearchParams], Optional[ByteSearchParams], Optional[JourneyUnitSearchParams]]:
+def post_process_response(response: str) -> Tuple[str, Optional[FluxParams], Optional[ChallengeSearchParams], Optional[ByteSearchParams], Optional[JourneyUnitSearchParams], Optional[SunoParams], Optional[AdminInstructionParams]]:
     """
     Clean the output of the llm
     """
@@ -311,6 +422,8 @@ def post_process_response(response: str) -> Tuple[str, Optional[SD3Params], Opti
         "challenge_search": None,
         "byte_search": None,
         "journey_unit_search": None,
+        "music_gen": None,
+        "admin_instruction": None
     }
     for match in matches:
         call = match.group(1).strip()
@@ -333,18 +446,31 @@ def post_process_response(response: str) -> Tuple[str, Optional[SD3Params], Opti
             outputs["byte_search"] = parse_search_bytes(func_call)
         if func_call["name"] == "search_journey_units":
             outputs["journey_unit_search"] = parse_search_journey_units(func_call)
+        if func_call["name"] == "generate_music":
+            outputs["music_gen"] = parse_music_gen(func_call)
+        if func_call["name"] == "store_admin_instruction":
+            outputs["admin_instruction"] = parse_admin_instructions(func_call)
 
     # remove any empty codeblocks
     response = re.sub(r"```(:?.+)?\n```", "", response)
 
-    return response, outputs["image_gen"], outputs["challenge_search"], outputs["byte_search"], outputs["journey_unit_search"]
+    return response, outputs["image_gen"], outputs["challenge_search"], outputs["byte_search"], outputs["journey_unit_search"], outputs["music_gen"], outputs["admin_instruction"]
 
 
-def parse_image_gen(func_call: dict) -> Optional[SD3Params]:
+def parse_admin_instructions(func_call: dict) -> Optional[AdminInstructionParams]:
+    try:
+        assert func_call["name"] == "store_admin_instruction"
+        return AdminInstructionParams(**func_call["arguments"])
+    except Exception as e:
+        print("ERROR: failed to get admin instructions: ", e, flush=True)
+        return None
+
+
+def parse_image_gen(func_call: dict) -> Optional[FluxParams]:
     # first try to parse it with pydantic for advanced options
     try:
         assert func_call["name"] == "generate_image"
-        return SD3Params(**func_call["arguments"])
+        return FluxParams(**func_call["arguments"])
     except Exception as e:
         print("ERROR: failed to parse image gen as pydantic: ", e, flush=True)
         pass
@@ -352,9 +478,28 @@ def parse_image_gen(func_call: dict) -> Optional[SD3Params]:
     try:
         assert func_call["name"] == "generate_image"
         prompt = func_call["arguments"]["prompt"]
-        return SD3Params(prompt=prompt)
+        return FluxParams(prompt=prompt)
     except Exception as e:
         print("ERROR: failed to parse image gen: ", e, flush=True)
+        pass
+
+    return None
+
+def parse_music_gen(func_call: dict) -> Optional[SunoParams]:
+    # first try to parse it with pydantic for advanced options
+    try:
+        assert func_call["name"] == "generate_music"
+        return SunoParams(**func_call["arguments"])
+    except Exception as e:
+        print("ERROR: failed to parse music gen as pydantic: ", e, flush=True)
+        pass
+
+    try:
+        assert func_call["name"] == "generate_music"
+        prompt = func_call["arguments"]["prompt"]
+        return SunoParams(prompt=prompt)
+    except Exception as e:
+        print("ERROR: failed to parse music gen: ", e, flush=True)
         pass
 
     return None
